@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Development environment
+  dev:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - .:/build
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/build/target
+    working_dir: /build
+    command: cargo watch -x build -x test
+    environment:
+      RUST_BACKTRACE: 1
+      RUST_LOG: debug
+
+  # Test environment
+  test:
+    build: .
+    volumes:
+      - casvps-data:/var/lib/casvps
+      - casvps-logs:/var/log/casvps
+    ports:
+      - "8006:8006"
+      - "5900-5999:5900-5999"
+    privileged: true
+    devices:
+      - /dev/kvm
+    environment:
+      RUST_LOG: info
+    command: start --debug
+
+  # Development shell
+  shell:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - .:/build
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/build/target
+    working_dir: /build
+    entrypoint: /bin/sh
+    stdin_open: true
+    tty: true
+
+volumes:
+  cargo-cache:
+  cargo-git:
+  target-cache:
+  casvps-data:
+  casvps-logs:

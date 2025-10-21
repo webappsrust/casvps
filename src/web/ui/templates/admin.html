@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - CasVPS</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0; padding: 0; background: #f5f7fa;
+        }
+        .sidebar {
+            width: 250px; background: #2c3e50; color: white; height: 100vh;
+            position: fixed; left: 0; top: 0; overflow-y: auto;
+        }
+        .sidebar h2 {
+            padding: 1rem; margin: 0; background: #34495e; text-align: center;
+            font-size: 1.2rem; border-bottom: 1px solid #34495e;
+        }
+        .nav-menu {
+            list-style: none; padding: 0; margin: 0;
+        }
+        .nav-menu li {
+            border-bottom: 1px solid #34495e;
+        }
+        .nav-menu a {
+            display: block; padding: 1rem 1.5rem; color: white; text-decoration: none;
+            transition: background 0.2s ease;
+        }
+        .nav-menu a:hover {
+            background: #3498db;
+        }
+        .nav-menu .active {
+            background: #3498db;
+        }
+        .main-content {
+            margin-left: 250px; padding: 2rem;
+        }
+        .header {
+            background: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem -2rem;
+            border-bottom: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0; color: #2c3e50; font-size: 1.5rem;
+        }
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem; margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white; padding: 1.5rem; border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-left: 4px solid #3498db;
+        }
+        .stat-number {
+            font-size: 2rem; font-weight: bold; color: #3498db; margin-bottom: 0.5rem;
+        }
+        .stat-label {
+            color: #7f8c8d; font-size: 0.9rem; text-transform: uppercase;
+        }
+        .content-section {
+            background: white; padding: 1.5rem; border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 2rem;
+        }
+        .content-section h3 {
+            margin: 0 0 1rem 0; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 0.5rem;
+        }
+        .btn {
+            background: #3498db; color: white; border: none; padding: 0.5rem 1rem;
+            border-radius: 5px; cursor: pointer; text-decoration: none;
+            display: inline-block; margin-right: 0.5rem;
+        }
+        .btn:hover { background: #2980b9; }
+        .btn-success { background: #27ae60; }
+        .btn-success:hover { background: #229954; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .table {
+            width: 100%; border-collapse: collapse; margin-top: 1rem;
+        }
+        .table th, .table td {
+            text-align: left; padding: 0.75rem; border-bottom: 1px solid #ecf0f1;
+        }
+        .table th {
+            background: #f8f9fa; font-weight: 600; color: #2c3e50;
+        }
+        .status-online { color: #27ae60; font-weight: bold; }
+        .status-offline { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>CasVPS Admin</h2>
+        <ul class="nav-menu">
+            <li><a href="#dashboard" class="active">📊 Dashboard</a></li>
+            <li><a href="#vms">🖥️ Virtual Machines</a></li>
+            <li><a href="#containers">📦 Containers</a></li>
+            <li><a href="#networks">🌐 Networks</a></li>
+            <li><a href="#storage">💾 Storage</a></li>
+            <li><a href="#users">👥 Users</a></li>
+            <li><a href="#cluster">🔗 Cluster</a></li>
+            <li><a href="#security">🔒 Security</a></li>
+            <li><a href="#compliance">📋 Compliance</a></li>
+            <li><a href="#backups">💿 Backups</a></li>
+            <li><a href="#monitoring">📈 Monitoring</a></li>
+            <li><a href="#certificates">🔐 Certificates</a></li>
+            <li><a href="#system">⚙️ System</a></li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h1>Administrator Dashboard</h1>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="vm-count">0</div>
+                <div class="stat-label">Virtual Machines</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="container-count">0</div>
+                <div class="stat-label">Containers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="user-count">1</div>
+                <div class="stat-label">Active Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="node-count">1</div>
+                <div class="stat-label">Cluster Nodes</div>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <h3>Quick Actions</h3>
+            <a href="#create-vm" class="btn btn-success">Create VM</a>
+            <a href="#create-container" class="btn btn-success">Create Container</a>
+            <a href="#add-user" class="btn">Add User</a>
+            <a href="#system-config" class="btn">System Config</a>
+            <a href="/support" class="btn">Support Portal</a>
+        </div>
+
+        <div class="content-section">
+            <h3>System Status</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Component</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Core Services</td>
+                        <td><span class="status-online">Online</span></td>
+                        <td>All services operational</td>
+                        <td><button class="btn">View Logs</button></td>
+                    </tr>
+                    <tr>
+                        <td>Database</td>
+                        <td><span class="status-online">Online</span></td>
+                        <td>SQLite database connected</td>
+                        <td><button class="btn">Backup DB</button></td>
+                    </tr>
+                    <tr>
+                        <td>Virtualization</td>
+                        <td><span class="status-online">Ready</span></td>
+                        <td>QEMU/KVM available</td>
+                        <td><button class="btn">Test</button></td>
+                    </tr>
+                    <tr>
+                        <td>Security Services</td>
+                        <td><span class="status-online">Active</span></td>
+                        <td>All security features enabled</td>
+                        <td><button class="btn">Configure</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="content-section">
+            <h3>Recent Activity</h3>
+            <p>No recent activity to display.</p>
+        </div>
+    </div>
+
+    <script>
+        // Basic dashboard functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load dashboard data via API
+            loadDashboardStats();
+
+            // Set up navigation
+            setupNavigation();
+        });
+
+        function loadDashboardStats() {
+            // This would normally fetch from /api/v1/admin/system/status
+            // For now, just update with demo data
+            console.log('Loading dashboard statistics...');
+        }
+
+        function setupNavigation() {
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    // Remove active class from all links
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    // Add active class to clicked link
+                    this.classList.add('active');
+                    // Here you would load the appropriate content
+                    console.log('Navigate to:', this.getAttribute('href'));
+                });
+            });
+        }
+    </script>
+</body>
+</html>

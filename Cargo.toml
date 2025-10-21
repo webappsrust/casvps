@@ -23,7 +23,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 rand = "0.8"
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "migrate", "chrono", "uuid"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "migrate", "chrono", "uuid"], default-features = false }
 
 # Web Server
 axum = { version = "0.7", features = ["ws"] }
@@ -35,7 +35,6 @@ hyper = { version = "1.0", features = ["full"] }
 pnet = "0.34"
 ipnetwork = "0.20"
 trust-dns-server = "0.23"
-dhcpv4 = "0.2"
 
 # Security
 sha2 = "0.10"
@@ -44,6 +43,11 @@ jsonwebtoken = "9.2"
 ring = "0.17"
 rcgen = "0.12"
 webpki = "0.22"
+base64 = "0.22"
+md5 = "0.7"
+sha1 = "0.10"
+httpdate = "1.0"
+tempfile = "3.9"
 
 # System
 nix = { version = "0.27", features = ["fs", "process", "signal", "user"] }
@@ -51,8 +55,8 @@ sysinfo = "0.30"
 procfs = "0.16"
 libc = "0.2"
 
-# QEMU/Virtualization
-virt = "0.3"
+# QEMU/Virtualization - using command-based control instead
+# virt = "0.3"
 
 # Storage
 tar = "0.4"
@@ -60,8 +64,8 @@ flate2 = "1.0"
 zstd = "0.13"
 lz4 = "1.24"
 
-# Consensus
-raft = "0.7"
+# Consensus - temporarily disabled due to protobuf compatibility issues
+# raft = "0.7"
 
 # Monitoring (embedded Victoria Metrics client)
 prometheus = "0.13"
@@ -77,6 +81,8 @@ dashmap = "5.5"
 arc-swap = "1.7"
 futures = "0.3"
 pin-project = "1.1"
+num_cpus = "1.16"
+which = "6.0"
 
 # Serialization
 bincode = "1.3"
@@ -86,12 +92,9 @@ toml = "0.8"
 reqwest = { version = "0.11", features = ["rustls-tls", "json", "stream"] }
 
 # Embedded services
-# DHCP server
-dhcp-server = { version = "0.1", optional = true }
 # DNS server
 trust-dns-resolver = "0.23"
-# TFTP
-async-tftp = "0.3"
+# TFTP (we'll implement our own)
 
 [dev-dependencies]
 criterion = "0.5"

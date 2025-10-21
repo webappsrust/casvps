@@ -1,27 +1,45 @@
 use anyhow::Result;
-use sqlx::{SqlitePool, Row};
+use sqlx::{SqlitePool, Row, sqlite::SqlitePoolOptions};
 use std::path::Path;
 use tracing::{info, debug};
 use uuid::Uuid;
 use serde_json::Value as JsonValue;
+use std::time::Duration;
 
 pub mod schema;
+pub mod models;
 
 use schema::*;
+use models::*;
 
 pub struct Database {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
 }
 
 impl Database {
     pub async fn new(path: &str) -> Result<Self> {
         // Create database file if it doesn't exist
         if !Path::new(path).exists() {
+            if let Some(parent) = Path::new(path).parent() {
+                std::fs::create_dir_all(parent)?;
+            }
             std::fs::File::create(path)?;
         }
 
-        let connection_str = format!("sqlite:{}", path);
-        let pool = SqlitePool::connect(&connection_str).await?;
+        let connection_str = format!("sqlite:{}?mode=rwc", path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(10)
+            .connect_timeout(Duration::from_secs(30))
+            .connect(&connection_str).await?;
+
+        // Enable WAL mode for better concurrent access
+        sqlx::query("PRAGMA journal_mode = WAL")
+            .execute(&pool)
+            .await?;
+
+        sqlx::query("PRAGMA synchronous = NORMAL")
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -55,6 +73,8 @@ impl Database {
         sqlx::query(&SCHEMA_IP_NETWORKS).execute(&self.pool).await?;
         sqlx::query(&SCHEMA_MONITORED_SERVICES).execute(&self.pool).await?;
         sqlx::query(&SCHEMA_SYSCTL_CONFIG).execute(&self.pool).await?;
+        sqlx::query(&SCHEMA_JOIN_TOKENS).execute(&self.pool).await?;
+        sqlx::query(&SCHEMA_FIREWALL_RULES).execute(&self.pool).await?;
 
         // Insert default data
         self.insert_default_data().await?;

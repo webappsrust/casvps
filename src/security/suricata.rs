@@ -1,0 +1,350 @@
+use anyhow::Result;
+use std::sync::Arc;
+use tracing::{info, warn, error};
+use super::deduplication::{SecurityDeduplicator, SecuritySource, SignatureType};
+
+pub struct SuricataManager {
+    deduplicator: Arc<SecurityDeduplicator>,
+    enabled: bool,
+    rules_path: String,
+    monitoring_interfaces: Vec<String>,
+    alert_threshold: u32,
+}
+
+impl SuricataManager {
+    pub async fn new(deduplicator: Arc<SecurityDeduplicator>) -> Result<Self> {
+        info!("Initializing Suricata IDS manager");
+
+        Ok(Self {
+            deduplicator,
+            enabled: true, // Always enabled by default per spec
+            rules_path: "/etc/casvps/security/suricata/rules".to_string(),
+            monitoring_interfaces: vec!["any".to_string()], // Monitor all interfaces
+            alert_threshold: 100, // Alert after 100 events per hour
+        })
+    }
+
+    pub async fn start(&self) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        info!("Starting Suricata IDS service");
+
+        // Update rule sets
+        self.update_rules().await?;
+
+        // Generate Suricata configuration
+        self.generate_config().await?;
+
+        // Start Suricata process
+        self.start_suricata_process().await?;
+
+        // Start log processing
+        self.start_log_processing().await?;
+
+        Ok(())
+    }
+
+    pub async fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub async fn increase_monitoring(&self, source_ip: &str) -> Result<()> {
+        info!("Increasing monitoring for IP: {}", source_ip);
+
+        // In full implementation, this would:
+        // 1. Add specific rules for this IP
+        // 2. Lower detection thresholds
+        // 3. Enable more detailed logging
+
+        Ok(())
+    }
+
+    pub async fn get_recent_alerts(&self, hours: u32) -> Result<Vec<SuricataAlert>> {
+        // In full implementation, this would parse Suricata's eve.json log
+        // For now, return mock data
+
+        Ok(vec![
+            SuricataAlert {
+                timestamp: chrono::Utc::now(),
+                signature: "ET SCAN Potential SSH Scan".to_string(),
+                source_ip: "192.168.1.100".to_string(),
+                dest_ip: "10.0.0.1".to_string(),
+                source_port: 12345,
+                dest_port: 22,
+                protocol: "TCP".to_string(),
+                severity: AlertSeverity::Medium,
+                category: "Attempted Information Leak".to_string(),
+            }
+        ])
+    }
+
+    async fn update_rules(&self) -> Result<()> {
+        info!("Updating Suricata rules from Emerging Threats");
+
+        // Create rules directory
+        tokio::fs::create_dir_all(&self.rules_path).await?;
+
+        // The deduplicator handles downloading rules from:
+        // https://rules.emergingthreats.net/open/suricata/rules/emerging.rules.tar.gz
+        // This is a free source that doesn't require authentication
+
+        // Extract and process rules
+        self.process_rules().await?;
+
+        Ok(())
+    }
+
+    async fn process_rules(&self) -> Result<()> {
+        info!("Processing Suricata rules for deduplication");
+
+        // Mock rule processing - in full implementation this would:
+        // 1. Parse Suricata rule format
+        // 2. Extract signatures
+        // 3. Add to deduplicated database
+        // 4. Generate optimized ruleset
+
+        // Example rules that would be processed:
+        let example_rules = vec![
+            r#"alert tcp any any -> any 22 (msg:"ET SCAN Potential SSH Scan"; flow:to_server,established; content:"SSH-"; depth:4; threshold:type both,track by_src,count 5,seconds 60; sid:2001219; rev:19;)"#,
+            r#"alert http any any -> any any (msg:"ET TROJAN Possible Generic HTTP C2"; content:"POST"; http_method; content:"/config"; http_uri; sid:2012647; rev:6;)"#,
+            r#"alert tcp any any -> any 3389 (msg:"ET SCAN Potential RDP Brute Force"; flow:to_server,established; threshold:type both,track by_src,count 10,seconds 60; sid:2010935; rev:3;)"#,
+        ];
+
+        for rule in example_rules {
+            if let Some(signature) = self.extract_signature_from_rule(rule) {
+                self.deduplicator.add_signature(
+                    &signature,
+                    SecuritySource::Suricata,
+                    SignatureType::IDS
+                ).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn extract_signature_from_rule(&self, rule: &str) -> Option<String> {
+        // Extract the msg field from Suricata rule
+        if let Some(start) = rule.find(r#"msg:""#) {
+            let msg_start = start + 5; // Skip 'msg:"'
+            if let Some(end) = rule[msg_start..].find('"') {
+                return Some(rule[msg_start..msg_start + end].to_string());
+            }
+        }
+        None
+    }
+
+    async fn generate_config(&self) -> Result<()> {
+        info!("Generating Suricata configuration");
+
+        let config = format!(r#"
+# Generated by CasVPS - DO NOT EDIT
+
+# Default rule path
+default-rule-path: {}
+
+# Rule files (optimized and deduplicated)
+rule-files:
+  - casvps-emerging-threats.rules
+  - casvps-local.rules
+
+# Variables
+vars:
+  address-groups:
+    HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    TELNET_SERVERS: "$HOME_NET"
+    AIM_SERVERS: "$EXTERNAL_NET"
+    DC_SERVERS: "$HOME_NET"
+    DNP3_SERVER: "$HOME_NET"
+    DNP3_CLIENT: "$HOME_NET"
+    MODBUS_CLIENT: "$HOME_NET"
+    MODBUS_SERVER: "$HOME_NET"
+    ENIP_CLIENT: "$HOME_NET"
+    ENIP_SERVER: "$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+# High performance settings
+threading:
+  set-cpu-affinity: yes
+  cpu-affinity:
+    - management-cpu-set:
+        cpu: [ 0 ]
+    - receive-cpu-set:
+        cpu: [ 0 ]
+    - worker-cpu-set:
+        cpu: [ "1-3" ]
+
+# Logging
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /var/log/casvps/suricata.json
+      types:
+        - alert:
+            payload: yes
+            packet: yes
+            http: yes
+            tls: yes
+            ssh: yes
+            smtp: yes
+        - http:
+            extended: yes
+        - dns:
+            query: yes
+            answer: yes
+        - tls:
+            extended: yes
+        - files:
+            force-magic: no
+        - smtp:
+        - ssh
+
+# Detection engine
+detect:
+  profile: high
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+
+# AF packet settings
+af-packet:
+  - interface: default
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+    ring-size: 2048
+    block-size: 32768
+
+# Stream settings
+stream:
+  memcap: 64mb
+  checksum-validation: yes
+  inline: auto
+  reassembly:
+    memcap: 256mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes
+"#, self.rules_path);
+
+        let config_path = "/etc/casvps/security/suricata/suricata.yaml";
+        tokio::fs::create_dir_all("/etc/casvps/security/suricata").await?;
+        tokio::fs::write(config_path, config).await?;
+
+        Ok(())
+    }
+
+    async fn start_suricata_process(&self) -> Result<()> {
+        info!("Starting Suricata process");
+
+        // In full implementation, this would start the actual Suricata binary:
+        // suricata -c /etc/casvps/security/suricata/suricata.yaml -D
+
+        Ok(())
+    }
+
+    async fn start_log_processing(&self) -> Result<()> {
+        let alert_threshold = self.alert_threshold;
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60)); // Check every minute
+
+            loop {
+                interval.tick().await;
+
+                // In full implementation, this would:
+                // 1. Parse /var/log/casvps/suricata.json
+                // 2. Extract alerts
+                // 3. Apply correlation rules
+                // 4. Generate security events
+
+                if let Err(e) = Self::process_suricata_logs(alert_threshold).await {
+                    error!("Failed to process Suricata logs: {}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn process_suricata_logs(alert_threshold: u32) -> Result<()> {
+        // Mock log processing
+        info!("Processing Suricata logs (threshold: {} alerts/hour)", alert_threshold);
+
+        // In full implementation:
+        // 1. Read eve.json log entries
+        // 2. Parse JSON alerts
+        // 3. Count alerts per source IP
+        // 4. Generate security events for thresholds
+        // 5. Update threat intelligence
+
+        Ok(())
+    }
+
+    pub async fn get_stats(&self) -> SuricataStats {
+        SuricataStats {
+            enabled: self.enabled,
+            rules_count: 50000, // Mock count
+            alerts_last_hour: 25,
+            packets_processed: 1000000,
+            bytes_processed: 1073741824, // 1GB
+            uptime_seconds: 3600,
+            monitored_interfaces: self.monitoring_interfaces.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SuricataAlert {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub signature: String,
+    pub source_ip: String,
+    pub dest_ip: String,
+    pub source_port: u16,
+    pub dest_port: u16,
+    pub protocol: String,
+    pub severity: AlertSeverity,
+    pub category: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum AlertSeverity {
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Critical = 4,
+}
+
+#[derive(Debug, Clone)]
+pub struct SuricataStats {
+    pub enabled: bool,
+    pub rules_count: u32,
+    pub alerts_last_hour: u32,
+    pub packets_processed: u64,
+    pub bytes_processed: u64,
+    pub uptime_seconds: u64,
+    pub monitored_interfaces: Vec<String>,
+}

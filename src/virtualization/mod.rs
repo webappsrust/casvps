@@ -5,6 +5,8 @@ use tracing::{debug, info};
 use crate::database::Database;
 use crate::core::Platform;
 
+pub mod qemu;
+
 pub struct VirtualizationManager {
     database: Arc<Database>,
     pub platform: Platform,

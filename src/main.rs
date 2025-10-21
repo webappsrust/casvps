@@ -8,8 +8,16 @@ mod core;
 mod database;
 mod network;
 mod services;
+mod smart;
 mod virtualization;
 mod web;
+mod clustering;
+mod security;
+mod iso;
+mod backup;
+mod monitoring;
+mod certificates;
+mod compliance;
 
 use crate::core::CasVPS;
 

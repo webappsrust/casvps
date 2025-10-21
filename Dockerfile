@@ -1,17 +1,40 @@
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM alpine:3.19 AS builder
 
-# Install build dependencies
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
+# Install Rust and build dependencies
+RUN apk add --no-cache \
+    curl \
+    build-base \
+    musl-dev \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig \
+    sqlite-dev \
+    sqlite-static \
+    libpq-dev \
+    zlib-dev \
+    zlib-static \
+    protobuf-dev \
+    protoc
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:$PATH"
+RUN rustup target add x86_64-unknown-linux-musl
 
 WORKDIR /build
 
 # Copy project files
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY src ./src
+COPY assets ./assets
 
 # Build static binary
 ENV RUSTFLAGS='-C link-arg=-s -C target-feature=+crt-static'
+ENV SQLX_OFFLINE=true
+ENV PROTOC=/usr/bin/protoc
+ENV PROTOC_INCLUDE=/usr/include
+RUN which protoc && protoc --version
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Runtime stage for testing

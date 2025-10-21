@@ -1,3 +1,6 @@
+pub mod api;
+pub mod ui;
+
 use anyhow::Result;
 use axum::{Router, routing::get};
 use std::net::SocketAddr;
@@ -7,9 +10,14 @@ use tracing::info;
 use crate::database::Database;
 use crate::virtualization::VirtualizationManager;
 
+#[derive(Clone)]
+pub struct WebState {
+    pub database: Arc<Database>,
+    pub virtualization: Arc<VirtualizationManager>,
+}
+
 pub struct WebServer {
-    database: Arc<Database>,
-    virtualization: Arc<VirtualizationManager>,
+    state: WebState,
     port: u16,
 }
 
@@ -18,9 +26,13 @@ impl WebServer {
         database: Arc<Database>,
         virtualization: Arc<VirtualizationManager>,
     ) -> Result<Self> {
-        Ok(Self {
+        let state = WebState {
             database,
             virtualization,
+        };
+
+        Ok(Self {
+            state,
             port: 8006,
         })
     }
@@ -47,6 +59,7 @@ impl WebServer {
 
         let addr = SocketAddr::from(([0, 0, 0, 0], self.port));
         info!("Web server listening on {}", addr);
+        info!("Access CasVPS at: {}", self.get_best_url());
 
         axum::Server::bind(&addr)
             .serve(app.into_make_service())
@@ -57,19 +70,27 @@ impl WebServer {
 
     fn create_router(&self) -> Router {
         Router::new()
-            .route("/", get(|| async { "CasVPS v1.0.0" }))
+            // UI routes
+            .merge(ui::create_routes())
+            // API v1 routes
+            .nest("/api/v1", api::create_routes())
+            // Proxmox compatibility
+            .nest("/api2/json", api::create_proxmox_compat_routes())
+            // Static health check
             .route("/health", get(|| async { "OK" }))
-            .route("/api/v1/status", get(|| async { r#"{"status":"running"}"# }))
+            // Add state and CORS
+            .with_state(self.state.clone())
             .layer(CorsLayer::permissive())
     }
 
     fn detect_fqdn_reverse_proxy(&self) -> Option<String> {
         // Check if behind reverse proxy with FQDN
+        // Look for reverse proxy headers, DNS resolution, etc.
         None
     }
 
     fn detect_wan_ip(&self) -> Option<String> {
-        // Try to detect WAN IP
+        // Try to detect WAN IP via external services
         None
     }
 
@@ -80,8 +101,11 @@ impl WebServer {
             if !interface.is_loopback() && interface.is_up() {
                 for ip in &interface.ips {
                     if let pnet::ipnetwork::IpNetwork::V4(ipv4) = ip {
-                        if !ipv4.ip().is_loopback() {
-                            return Some(ipv4.ip().to_string());
+                        let ip_addr = ipv4.ip();
+                        if !ip_addr.is_loopback() &&
+                           !ip_addr.is_multicast() &&
+                           !ip_addr.is_broadcast() {
+                            return Some(ip_addr.to_string());
                         }
                     }
                 }

@@ -268,3 +268,51 @@ CREATE TABLE IF NOT EXISTS sysctl_config (
     category TEXT,
     applied BOOLEAN DEFAULT FALSE
 )"#;
+
+pub const SCHEMA_JOIN_TOKENS: &str = r#"
+CREATE TABLE IF NOT EXISTS join_tokens (
+    token TEXT PRIMARY KEY,
+    generated_by TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)"#;
+
+pub const SCHEMA_FIREWALL_RULES: &str = r#"
+CREATE TABLE IF NOT EXISTS firewall_rules (
+    rule_id TEXT PRIMARY KEY,
+    chain TEXT NOT NULL,
+    source_ip TEXT,
+    dest_ip TEXT,
+    port INTEGER,
+    protocol TEXT,
+    action TEXT NOT NULL,
+    comment TEXT,
+    permanent BOOLEAN DEFAULT FALSE,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)"#;
+
+pub const SCHEMA_RESTORE_HISTORY: &str = r#"
+CREATE TABLE IF NOT EXISTS restore_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id TEXT NOT NULL,
+    target_path TEXT NOT NULL,
+    files_restored INTEGER DEFAULT 0,
+    bytes_restored INTEGER DEFAULT 0,
+    success BOOLEAN DEFAULT FALSE,
+    error_message TEXT,
+    restored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)"#;
+
+pub const SCHEMA_COMPLIANCE_AUDIT_LOG: &str = r#"
+CREATE TABLE IF NOT EXISTS compliance_audit_log (
+    id TEXT PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    compliance_type TEXT NOT NULL,
+    action TEXT NOT NULL,
+    user_id TEXT,
+    details JSON,
+    result TEXT NOT NULL,
+    issues_found INTEGER,
+    critical_issues INTEGER
+)"#;

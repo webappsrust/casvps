@@ -3,6 +3,11 @@ use std::sync::Arc;
 use tracing::debug;
 use crate::database::Database;
 
+pub mod dhcp;
+pub mod dns;
+pub mod tftp;
+pub mod sdn;
+
 pub struct NetworkManager {
     database: Arc<Database>,
 }

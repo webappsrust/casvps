@@ -385,7 +385,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 ```bash
 # After make dev, debug in Docker with tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq  # Required debug tools
   /app/{project_name} --help
   /app/{project_name} --version
@@ -431,7 +431,7 @@ make dev                # Quick build to temp dir
 
 # 2. Debug in Docker (with tools)
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq
   /app/{project_name} --help
 "
@@ -37298,6 +37298,7 @@ BINDIR := binaries
 RELDIR := releases
 
 # Cargo cache bind-mounted from host
+# CARGO_CACHE and SCCACHE_CACHE are safe to share across concurrent builds (cargo + sccache use file locking)
 CARGO_CACHE   ?= $(HOME)/.cargo
 RUSTUP_CACHE  ?= $(HOME)/.rustup
 SCCACHE_CACHE ?= $(HOME)/.cache/sccache
@@ -37306,10 +37307,14 @@ CARGO_TARGET   ?= $(HOME)/.cache/cargo-target
 # Build targets
 PLATFORMS ?= linux/amd64,linux/arm64
 
+# Resource limits — overrideable; prevents any single container from starving concurrent agent builds
+DOCKER_MEM  ?= 4g
+DOCKER_CPUS ?= 2
+
 # Docker - Set REGISTRY based on your platform (ghcr.io, registry.gitlab.com, git.example.com)
 REGISTRY ?= ghcr.io/$(PROJECTORG)/$(PROJECTNAME)
-RUST_DOCKER := docker run --rm -it \
-	--name $(PROJECTNAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
+RUST_DOCKER := docker run --rm \
+	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) \
 	-v $(PWD):/app \
 	-v $(CARGO_CACHE):/usr/local/share/cargo \
 	-v $(RUSTUP_CACHE):/usr/local/share/rustup \
@@ -37541,7 +37546,7 @@ dev:
 				cp target/x86_64-unknown-linux-musl/debug/$(PROJECTNAME)-agent /app/$$BUILD_DIR/$(PROJECTNAME)-agent" && \
 			echo "Built: $$BUILD_DIR/$(PROJECTNAME)-agent"; \
 		fi && \
-		echo "Test:  docker run --rm -it --name $(PROJECTNAME)-test -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECTNAME) --help"
+		echo "Test:  docker run --rm --name $(PROJECTNAME)-test -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECTNAME) --help"
 
 # =============================================================================
 # CLEAN - Remove build artifacts
@@ -37689,7 +37694,7 @@ All Docker builds mount three host directories to persist Cargo, Rustup, and scc
 ```bash
 # After make dev, test in Docker with debug tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
@@ -38644,7 +38649,8 @@ networks:
 ```dockerfile
 # All-in-One Dockerfile - includes app + postgresql + valkey + tor
 # Build: casjaysdev/rust:latest (static musl binary)
-# Runtime: debian:latest (stable, broad compatibility)
+# Runtime: debian:latest — Alpine (musl) is insufficient here; PostgreSQL, Valkey, and Tor
+#           require glibc and system libraries not available on Alpine. Use debian, not alpine.
 # Image name: {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest-aio
 # PORTS: Only 80 exposed (db/cache are internal-only)
 
@@ -42070,7 +42076,7 @@ pipeline {
                 stage('CLI Darwin AMD64') {
                     agent { label 'amd64' }
                     steps {                        sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42090,7 +42096,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42107,7 +42113,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42124,7 +42130,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42141,7 +42147,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42158,7 +42164,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42184,7 +42190,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42201,7 +42207,7 @@ pipeline {
                     agent { label 'arm64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42218,7 +42224,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42235,7 +42241,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42252,7 +42258,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42269,7 +42275,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42286,7 +42292,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42303,7 +42309,7 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm -it \
+                            docker run --rm \
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42323,7 +42329,7 @@ pipeline {
             agent { label 'amd64' }
             steps {
                 sh '''
-                    docker run --rm -it \
+                    docker run --rm \
                         --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${CARGO_HOME:-$HOME/.cargo}:/usr/local/share/cargo \
@@ -42640,7 +42646,7 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 | Test Need | Run It Where |
 |-----------|--------------|
 | Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` |
-| Test firewall integration | `docker run --rm -it --name "{project_name}-test" --cap-add=NET_ADMIN ...` |
+| Test firewall integration | `docker run --rm --name "{project_name}-test" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
 | Test package install / dependency setup | Inside the build container or test container |
 | Test reboot / service restart behavior | `incus restart test-{project_name}` |
@@ -43400,7 +43406,7 @@ verify_all_endpoints_tested
 # 1. Build in Docker (always use Docker for builds)
 mkdir -p "${TMPDIR:-/tmp}/${PROJECT_ORG}"
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app \
+docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app \
   casjaysdev/rust:latest cargo build --release --target x86_64-unknown-linux-musl
 cp target/x86_64-unknown-linux-musl/release/{project_name} "$BUILD_DIR/"
 
@@ -43419,7 +43425,7 @@ if command -v incus &>/dev/null; then
 else
   # FALLBACK: Quick test in Docker (alpine, no systemd)
   echo "Incus not available, testing with Docker..."
-  docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest \
+  docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest \
     /app/{project_name} --help
 fi
 ```
@@ -43493,7 +43499,7 @@ CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target}"
 mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "${SCCACHE_DIR:-$HOME/.cache/sccache}" "$CARGO_TARGET"
 
 # Common docker run for Rust builds
-RUST_DOCKER="docker run --rm -it \
+RUST_DOCKER="docker run --rm \
   --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $PWD:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -43522,7 +43528,7 @@ if grep -q "name = \"${PROJECT_NAME}-agent\"" Cargo.toml 2>/dev/null || [ -f "sr
 fi
 
 echo "Testing in Docker (Alpine)..."
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
@@ -43748,7 +43754,7 @@ CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target}"
 mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "${SCCACHE_DIR:-$HOME/.cache/sccache}" "$CARGO_TARGET"
 
 # Common docker run for Rust builds
-RUST_DOCKER="docker run --rm -it \
+RUST_DOCKER="docker run --rm \
   --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $PWD:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -44252,7 +44258,7 @@ CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target}"
 mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "${SCCACHE_DIR:-$HOME/.cache/sccache}" "$CARGO_TARGET"
 
 # Common docker run for Rust commands
-RUST_DOCKER="docker run --rm -it \
+RUST_DOCKER="docker run --rm \
   --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $PROJECT_PATH:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -44283,7 +44289,7 @@ $RUST_DOCKER casjaysdev/rust:latest cargo clippy -- -D warnings
 $RUST_DOCKER casjaysdev/rust:latest cargo audit
 
 # Interactive shell (for debugging)
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $PROJECT_PATH:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -44306,7 +44312,7 @@ CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target}"
 mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "${SCCACHE_DIR:-$HOME/.cache/sccache}" "$CARGO_TARGET"
 
 # Build (with caching)
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $PWD:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -44319,7 +44325,7 @@ mkdir -p binaries
 cp target/x86_64-unknown-linux-musl/release/{project_name} binaries/
 
 # Test in Docker (quick) - install tools first
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq >/dev/null
   /app/{project_name} --help
 "
@@ -44348,7 +44354,7 @@ TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
 mkdir -p $TEST_DIR/{config,data,logs}
 
 # Build to binaries/ (with caching)
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $PWD:/app \
   -v $CARGO_HOME:/usr/local/share/cargo \
@@ -44361,14 +44367,14 @@ mkdir -p binaries
 cp target/x86_64-unknown-linux-musl/release/{project_name} binaries/
 
 # Quick test in Docker (install tools first)
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq >/dev/null
   /app/{project_name} --help
   /app/{project_name} --version
 "
 
 # Full test with config/data in Docker
-docker run --rm -it \
+docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $PWD/binaries:/app \
   -v $TEST_DIR:/test \
@@ -44392,7 +44398,7 @@ TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
 mkdir -p $TEST_DIR/{config,data,logs}
 
 # Build
-docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app \
+docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app \
   casjaysdev/rust:latest cargo build --release --target x86_64-unknown-linux-musl
 mkdir -p binaries
 cp target/x86_64-unknown-linux-musl/release/{project_name} binaries/

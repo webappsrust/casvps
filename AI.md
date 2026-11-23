@@ -31808,7 +31808,7 @@ pub fn tracking_script(headers: &HeaderMap, cfg: &Config) -> askama::MarkupDispl
 
 **Every page under `/server/*` — and every sub-page of `/server/preferences/` and `/server/help/` — belongs to one family: the same chrome, the same page shell, the same components. A page that looks or behaves differently from its siblings is a defect, not a design choice.**
 
-**The admin tree `/server/{admin_path}/**` is the one exception to the shared chrome.** "Admin Panel Isolation" is about routes, authentication and sessions, and the admin panel keeps its own layout (`admin.tmpl`, with the admin header and footer, "Admin Layout"): the public header, its navigation and the public footer are not rendered there, and "Header and Navigation Conformance" does not apply to the admin header. Inside `<main>` the page shell, the shared components and classes and the accessibility rules apply unchanged: `.page-header` with one `<h1 class="page-title">`, `.section-card`, skip links as the first focusable elements, no inline style or script, and a page usable without JavaScript.
+**The admin tree `/server/{admin_path}/**` is the one exception to the shared chrome.** "Admin Panel Isolation" is about routes, authentication and sessions, and the admin panel keeps its own layout (`admin.tmpl`, with the admin header and footer, "Admin Layout"): the public header, its navigation and the public footer are not rendered there. The admin panel instead has its own chrome: the Admin Panel Header ("Admin Session Visibility") and the admin sidebar, which collapses behind a hamburger on small screens. "Header and Navigation Conformance" governs only the public header and does not apply to the admin header or sidebar. The admin chrome keeps the accessibility rules of the public one: "Skip to main content" and "Skip to navigation" are the first focusable elements, the header, the sidebar (`<nav>` with an `aria-label`), `<main id="main-content">` and the footer are landmarks, theme colors come from the shared CSS custom properties, and it needs no JavaScript to navigate. Inside `<main>` the page shell, the shared components and classes and the accessibility rules apply unchanged: `.page-header` with one `<h1 class="page-title">`, `.section-card`, skip links as the first focusable elements, no inline style or script, and a page usable without JavaScript.
 
 ### Page Shell (one markup for every `/server/*` page)
 
@@ -41747,7 +41747,7 @@ fn run_service() -> anyhow::Result<()> {
 
 # PART 26: MAKEFILE
 
-**Six core targets (plus the `clean` helper). DO NOT ADD MORE.**
+**Six core targets (plus the `clean` and `release-check` helpers). DO NOT ADD MORE.**
 
 ## Targets
 
@@ -48649,7 +48649,7 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 
 Before proceeding, confirm you understand:
 - [ ] Docker uses tini as init, Alpine base
-- [ ] Makefile has the six core targets: dev, local, build, test, release, docker (plus the `clean` helper)
+- [ ] Makefile has the six core targets: dev, local, build, test, release, docker (plus the `clean` and `release-check` helpers)
 - [ ] Binary naming: NEVER include -musl suffix
 - [ ] All 7 platform builds required (linux/darwin/windows × amd64/arm64, freebsd × amd64)
 - [ ] CLI builds (if src/client/ exists): 8 additional binaries with `-cli` suffix
@@ -51781,7 +51781,7 @@ docker run --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -
 - [Repository]({PLATFORM_REPO_URL})
 - [Live Demo]({official_site}) (if applicable)
 - [API Documentation](/server/docs/swagger) (Swagger UI)
-- [GraphQL Playground](/server/docs/graphql)
+- [GraphiQL](/server/docs/graphql)
 
 ## License
 
@@ -69872,7 +69872,7 @@ make docker
 - [ ] Admin panel uses theme
 - [ ] Error pages use theme (404, 500, 502, 503, etc.)
 - [ ] Swagger UI uses theme
-- [ ] GraphQL Playground uses theme
+- [ ] GraphiQL uses theme
 - [ ] ReadTheDocs uses theme
 - [ ] CLI TUI uses theme (if applicable)
 

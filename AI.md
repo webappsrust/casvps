@@ -685,7 +685,7 @@ let cache_size = (avail_mem / 10)
 | **No HTTP reverse proxy** | Never route raw protocols through nginx/Caddy HTTP vhosts; the only acceptable middle layer is a transparent TCP/stream proxy (nginx `stream`, HAProxy `mode tcp`) |
 | **No HTTP middleware** | Raw listeners bypass the HTTP middleware chain entirely (no HTTP logging/security-header/rate-limit middleware); each protocol implements its own logging and abuse protection |
 | **TLS variants on their own ports** | Implicit-TLS listeners use their standard port (SMTPS 465, POP3S 995, IMAPS 993, NNTPS 563); STARTTLS stays on the plain port where the RFC defines it; certificates come from the same TLS config as HTTPS |
-| **Per-protocol config** | Each listener gets its own `{proto}.address`/`{proto}.port` config keys + `{PROTO}_PORT` env override, defaulting to the standard port |
+| **Per-protocol config** | Each listener gets its own `{proto}.enabled`, `{proto}.address` and `{proto}.port` config keys + `{PROTO}_PORT` env override, defaulting to the standard port. These keys are read by the early config peek (PART 8 step 8e), so a privileged raw port is bound with its configured address BEFORE the privilege drop; changing them needs a restart |
 | **Independent enable/disable** | Every raw listener is individually toggleable in config, disabled by default unless it IS the project's core function; the HTTP admin/API listener keeps following the HTTP rules above |
 | **Custom raw services** | Projects exposing a non-IANA raw port (termbin-style netcat paste service, etc.) document the port in IDEA.md; once shipped that port is the published interface — treat it as stable like `{internal_name}` |
 | **Privileged ports** | Binding <1024 inside the container is fine (container has the capability); bare-host deploys follow Privileged Port Binding (<1024) in PART 5 — service-install escalation with bind-then-drop |
@@ -4519,7 +4519,7 @@ Every feature MUST work via:
 1. **Web browser** - HTML pages, forms, interactive UI
 2. **PWA (Progressive Web App)** - Installable, offline-capable, native-like experience
 3. **API clients** - JSON for automation, scripts and any client that sends `Accept: application/json`; plain text for curl, wget and similar HTTP tools that send no explicit `Accept` (an explicit `Accept` always beats client detection, see "Content Negotiation Priority")
-4. **clients** - Dedicated command-line tools (if PART 33 implemented)
+4. **clients** - A dedicated command-line tool: every project ships its companion client (the client PART is mandatory)
 
 | Client Type | Examples | Response Format |
 |-------------|----------|-----------------|
@@ -6853,6 +6853,8 @@ edition = "2021"
 |---------|-------|-------|
 | **YAML** | `serde_yaml` | Config file parsing via serde |
 | **UUID** | `uuid` | Standard UUID generation; `v4` feature |
+| **Markdown** | `pulldown-cmark` | The one renderer for every Markdown surface (configured branding and page content, help pages, OpenAPI descriptions, tool descriptions). Raw HTML events are dropped before rendering and the output ALWAYS goes through the `ammonia` policy before it is served |
+| **HTML sanitizer** | `ammonia` | The allow-list policy applied to rendered Markdown and to operator HTML (PART 16 "Custom HTML Validation") |
 | **OpenPGP** | `pgp` (rPGP) | Security-report keypair (PART 11): Ed25519 + X25519 generation, signing and encryption |
 | **Argon2** | `argon2` | Password hashing; pure Rust |
 | **Bcrypt** | `bcrypt` | Verify existing passwords (rehash to Argon2id) |
@@ -7604,7 +7606,38 @@ pub fn safe_path(input: &str) -> Result<String, PathError> {
     validate_path(input)?;
     normalize_path(input).ok_or(PathError::Traversal)
 }
+
+// safe_resource_path validates a relative FILE or RESOURCE path (static files, downloads, an API file parameter).
+// Segments keep their dots and their case (main.css, robots.txt, Report_2024.pdf), never start with a dot, and the
+// input never contains ".." or a backslash; the name is accepted or rejected, never rewritten
+pub fn safe_resource_path(input: &str) -> Result<String, PathError> {
+    if input.len() > 2048 {
+        return Err(PathError::TooLong);
+    }
+    if input.contains("..") || input.contains('\\') {
+        return Err(PathError::Traversal);
+    }
+    let mut kept: Vec<&str> = Vec::new();
+    for seg in input.trim_matches('/').split('/') {
+        if seg.is_empty() {
+            continue;
+        }
+        let mut chars = seg.chars();
+        let first_ok = chars.next().map_or(false, |c| c.is_ascii_alphanumeric());
+        let rest_ok = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+        if seg.len() > 255 || !first_ok || !rest_ok {
+            return Err(PathError::InvalidChars);
+        }
+        kept.push(seg);
+    }
+    if kept.is_empty() {
+        return Err(PathError::InvalidChars);
+    }
+    Ok(kept.join("/"))
+}
 ```
+
+**Two validation contracts, never one.** `safe_path` is for configured identifiers and URL prefixes (`admin_path`, base paths): lowercase `[a-z0-9_-]` segments only, so it correctly rejects a dot. `safe_resource_path` is for file and resource names that legitimately carry dots and case (`/static/css/main.css`, `/robots.txt`, an API `file` parameter). The HTTP path middleware checks only traversal and encoding of the request path and applies neither contract. Every use of user input as a file name goes through `safe_resource_path`, then the base-directory check.
 
 ### Normalization Examples
 
@@ -7682,7 +7715,7 @@ async fn handle_file_request(
     Query(params): Query<FileQuery>,
     axum::extract::State(state): axum::extract::State<std::sync::Arc<AppState>>,
 ) -> impl IntoResponse {
-    let safe = match safe_path(&params.file) {
+    let safe = match safe_resource_path(&params.file) {
         Ok(p) => p,
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid path").into_response(),
     };
@@ -7775,8 +7808,8 @@ use std::path::{Path, PathBuf};
 
 // safe_file_path ensures path stays within base directory
 pub fn safe_file_path(base_dir: &str, user_path: &str) -> Result<PathBuf, PathError> {
-    // Normalize user input
-    let safe = safe_path(user_path)?;
+    // Validate the user-supplied resource path (dots and case allowed, traversal never)
+    let safe = safe_resource_path(user_path)?;
 
     // Construct full path
     let full_path = Path::new(base_dir).join(&safe);
@@ -8646,7 +8679,7 @@ impl CreateResourceRequest {
 | **Reload** | The file watcher watches `server.yml`, `yaml.d/`, `secrets.yml` and `assets/`. A change, add or remove re-merges everything; an invalid value resets that key to its default and an unparseable file keeps its last good copy ("Validation") |
 | **Generated values** | The server writes generated values (the saved random port) to `server.yml` and the secrets to `secrets.yml`. It writes area files only for the automatic migration, the admin panel, the setup flow, the CLI and the database sync. If two files set the same key, the later one wins and the startup log says which file did |
 | **Permissions** | `server.yml`, `secrets.yml` and every drop-in are ALWAYS `0600`, and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused: it is ignored and the error is logged |
-| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` are read (`ssl.enabled` is not among them: it only decides whether an already bound single-port listener serves TLS, and the full load at step 13 reads it), from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set any of these four settings and it takes effect on the first start; none of them is re-read or rebound later, so changing `server.port`, `server.address`, `server.daemonize` or `server.pidfile` needs a restart (PART 12) |
+| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` (plus, for every raw-protocol listener the project defines, its `{proto}.enabled`, `{proto}.address` and `{proto}.port`) are read (`ssl.enabled` is not among them: it only decides whether an already bound single-port listener serves TLS, and the full load at step 13 reads it), from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set any of these four settings and it takes effect on the first start; none of them is re-read or rebound later, so changing `server.port`, `server.address`, `server.daemonize` or `server.pidfile` needs a restart (PART 12) |
 | **Backup** | `{config_dir}/yaml.d/` and `{config_dir}/secrets.yml` are included in backups whenever they exist (PART 22 → "Backup Contents") |
 - **Admin panel:** the panel writes each setting to the file that owns it ("Area Files and Automatic Migration"), `secrets.yml` for the secret keys ("Secrets File") and `assets/` for uploaded images ("Image Files"). A setting that a file OTHER than its owner sets is shown read-only with the file name (`set by yaml.d/90-local.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** the area files are synced through the database ("Config Sync"); `server.yml` and `secrets.yml` are node-local.
@@ -8745,7 +8778,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
-| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile` |
+| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile`, plus each raw-protocol listener's `{proto}.enabled`, `{proto}.address` and `{proto}.port` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
 | **Reload** | The file watcher watches it with `server.yml`, `yaml.d/` and `assets/`; a change re-merges everything and an invalid result keeps the last good config |
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
@@ -11665,7 +11698,7 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these three keys, its error is reported by the full load at step 13)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` (plus every raw-protocol listener's `{proto}.enabled`, `{proto}.address` and `{proto}.port`, with the `{PROTO}_PORT` override) from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these three keys, its error is reported by the full load at step 13)
       └─ No file, or no `server.port` in it? → the default for the context: port `80` in an application container (it starts as root, so step 8f binds it before the drop), otherwise a random port in 64000-64999 (a system container or any host; single, HTTP); step 13 writes it to the new config
       Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `[::]` (IPv4 `0.0.0.0` fallback when the kernel has no IPv6, logged once as a warning). `[::]` and `::` are both accepted for `--address`, `LISTEN` and `server.address`; the brackets are stripped before the value is parsed as an IP. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
    e2. Daemonize (manual start only; never for `--service start` or in a container, see "Daemonization"): when `--daemon` was given, or the early peek found `server.daemonize: true`, re-execute now (marker `_DAEMON_CHILD=1`) and exit the parent with 0. This happens BEFORE any privileged socket is bound, so the child repeats steps 6-8e (all idempotent) and binds the ports itself; a bound socket never has to cross the re-execute.
@@ -23958,7 +23991,7 @@ Need additional compatible endpoints?"
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"); a route declared `Binary` returns its own bytes and `Content-Type`; the MCP endpoints answer with JSON-RPC 2.0 objects (canonical error body only for a request that cannot be parsed). |
+| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"); a route declared `Binary` returns its own bytes and `Content-Type`; the MCP endpoints answer with JSON-RPC 2.0 objects (canonical error body only for a request that cannot be parsed); the GraphQL endpoint (`/api/{api_version}/server/graphql` and its alias) answers with the standard GraphQL response map, never the envelope: success is `{"data": {...}}`; an execution error is `{"data": null or partial, "errors": [{"message": ..., "extensions": {"code": ...}}]}` with HTTP `200`; a request that fails before execution (`401`, `429`, malformed JSON body) keeps the canonical error body and its HTTP status. |
 | `data` | Yes | Response payload |
 | `data.id` | If created | ID of created/affected resource |
 | `data.message` | No | Human-readable status message |
@@ -29609,7 +29642,8 @@ Mobile:
 ```html
 <!-- Menu state checkbox, drawer panel and scrim are children of <body>, NOT of <header>
      (a fixed panel inside a header with transform/backdrop-filter is clipped to the header). -->
-<input type="checkbox" id="nav-toggle" class="nav-checkbox" hidden>
+<!-- NOT the `hidden` attribute: that removes the control from the focus order. It is visually hidden by CSS and is the focus target of the menu (Space toggles it, no JS) -->
+<input type="checkbox" id="nav-toggle" class="nav-checkbox" aria-label="Toggle navigation">
 
 <!-- Header bar: single row — brand | centered links | profile/preferences | theme toggle -->
 <header class="header">
@@ -29718,12 +29752,13 @@ Mobile:
 | Enhancement | Behavior |
 |-------------|----------|
 | **Overflow detection ("Smart Menu")** | On load and resize, if the inline `.nav-links` do not fit at >= 768px, add `nav-collapsed` to `<html>` so the hamburger is used instead. Without the script the 768px breakpoint decides |
-| **Keyboard** | Esc unchecks the checkbox; focus moves into the panel on open, stays inside while open and returns to the toggle on close |
+| **Keyboard** | Esc unchecks the checkbox; focus moves into the panel on open, stays inside while open and returns to the menu checkbox (`#nav-toggle`, the focusable control behind the hamburger label) on close |
 
 ```css
 /* Overflow fallback: only when app.js added .nav-collapsed on a wide viewport */
 @media (min-width: 768px) {
   .nav-collapsed .nav-toggle { display: block; }
+  .nav-collapsed .nav-checkbox { display: block; }
   .nav-collapsed .nav-links { display: none; }
   .nav-collapsed .nav-panel { display: block; }
   .nav-collapsed .nav-checkbox:checked ~ .nav-overlay { display: block; }
@@ -29735,6 +29770,9 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
 **CSS-Only Baseline (works with NO JavaScript) - Mobile-First:**
 ```css
 /* Base: Mobile styles (no media query) */
+/* Visually hidden but focusable: the keyboard focus target of the menu, with its focus ring drawn on the visible hamburger */
+.nav-checkbox { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; opacity: 0; }
+.nav-checkbox:focus-visible ~ .header .nav-toggle { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .nav-toggle { display: block; cursor: pointer; }
 .nav-links { display: none; }
 
@@ -29781,6 +29819,8 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
 /* Desktop: show inline links, hide hamburger */
 @media (min-width: 768px) {
   .nav-toggle, .nav-panel, .nav-overlay { display: none; }
+  /* No hamburger on desktop, so the checkbox leaves the focus order too */
+  .nav-checkbox { display: none; }
   .nav-links { display: flex; }
 }
 ```
@@ -43003,7 +43043,7 @@ See dockerfile_conventions.md → OCI Annotations for the complete list of requi
 | **NEVER modify CMD** | Pass commands to entrypoint.sh instead |
 | **STOPSIGNAL** | Use `SIGRTMIN+3` for proper shutdown |
 | **ENTRYPOINT format** | `[ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]` |
-| **HEALTHCHECK timing** | Start: 10m, Interval: 5m, Timeout: 15s |
+| **HEALTHCHECK timing** | The image's `HEALTHCHECK` (standard and AIO alike) is `--start-period=10m --interval=5m --timeout=15s --retries=3`, long enough for Tor and I2P bootstrap and database init; the Compose files override it with `start_period: 90s` (30s for helper services), `interval: 10s`, `timeout: 5s` |
 | **Customization** | ALL customization via entrypoint.sh |
 | **entrypoint.sh tail** | Must end with `exec "$@"` (or `exec <binary> ... "$@"`) so the application replaces the shell as PID 1 and receives signals directly — without `exec`, tini/Docker signals are delivered to bash, not the app, and graceful shutdown breaks |
 

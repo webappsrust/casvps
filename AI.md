@@ -12263,7 +12263,7 @@ Use --service --install for Windows Service (it also enables and starts it)
 
 **Unix (Linux, macOS, FreeBSD):**
 
-| Signal | Number | Action | Description |
+| Signal | Number (Linux) | Action | Description |
 |--------|--------|--------|-------------|
 | `SIGTERM` | 15 | Graceful shutdown | Default kill signal, clean exit |
 | `SIGINT` | 2 | Graceful shutdown | Ctrl+C, clean exit |
@@ -12271,7 +12271,9 @@ Use --service --install for Windows Service (it also enables and starts it)
 | `SIGHUP` | 1 | Ignored | Config auto-reloads via file watcher |
 | `SIGUSR1` | 10 | Reopen logs | Log rotation |
 | `SIGUSR2` | 12 | Status dump | Dump status to log |
-| `SIGRTMIN+3` | 37 | Graceful shutdown | Docker STOPSIGNAL |
+| `SIGRTMIN+3` | 37 | Graceful shutdown | Docker STOPSIGNAL, **Linux only**: Docker sends 37 to a Linux container whatever its libc. macOS has no real-time signals and FreeBSD numbers them differently (`SIGRTMIN` is 65 there), so the handler is registered on Linux only and nowhere else |
+
+**The numbers are Linux's.** macOS and FreeBSD number `SIGUSR1` and `SIGUSR2` as 30 and 31, so code always uses the named kinds (`SignalKind::user_defined1()`), never a number. The one literal number is `SIGRTMIN+3` = 37, because no named kind exists for it, and it is guarded by `cfg!(target_os = "linux")`.
 
 **Windows:**
 
@@ -12327,8 +12329,8 @@ pub async fn setup_signal_handler(state: Arc<AppState>, pid_file: String) {
     let mut sigquit = signal(SignalKind::quit()).expect("SIGQUIT handler");
     let mut sigusr1 = signal(SignalKind::user_defined1()).expect("SIGUSR1 handler");
     let mut sigusr2 = signal(SignalKind::user_defined2()).expect("SIGUSR2 handler");
-    // SIGRTMIN+3 = signal 37 (Docker STOPSIGNAL)
-    let mut sigrt3 = signal(SignalKind::from_raw(37)).expect("SIGRTMIN+3 handler");
+    // SIGRTMIN+3 = signal 37 (Docker STOPSIGNAL), Linux only: elsewhere the number is unrelated or invalid, so no handler
+    let mut sigrt3 = if cfg!(target_os = "linux") { signal(SignalKind::from_raw(37)).ok() } else { None };
     // SIGHUP is ignored — config auto-reloads via file watcher
 
     tokio::select! {
@@ -12344,7 +12346,12 @@ pub async fn setup_signal_handler(state: Arc<AppState>, pid_file: String) {
             info!("Received SIGQUIT, starting graceful shutdown...");
             graceful_shutdown(state, &pid_file).await;
         }
-        _ = sigrt3.recv() => {
+        _ = async {
+            match sigrt3.as_mut() {
+                Some(s) => { s.recv().await; }
+                None => std::future::pending::<()>().await,
+            }
+        } => {
             info!("Received SIGRTMIN+3, starting graceful shutdown...");
             graceful_shutdown(state, &pid_file).await;
         }

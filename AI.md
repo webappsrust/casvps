@@ -20801,7 +20801,7 @@ pub struct ConsentState {
     pub timestamp: i64,
 }
 
-// Stored in the `cookie_consent` COOKIE as JSON (1 year, SameSite=Lax) so the
+// Stored in the `cookie_consent` COOKIE as percent-encoded compact JSON (urlencoding::encode / decode; 1 year, SameSite=Lax) so the
 // server can read it - consent_middleware parses it via get_consent_from_jar():
 // cookie_consent = {"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}
 ```
@@ -27969,7 +27969,7 @@ async function clearClientData() {
 |--------|--------|---------|
 | `theme` | `dark` \| `light` \| `auto` | `dark` |
 | `lang` | BCP 47 tag: `en`, `es`, `fr`, … — written only when the visitor picks a language or applies a sync import | automatic: best `Accept-Language` match, else `en` (see "Language Selection") |
-| `cookie_consent` | JSON: granular categories + timestamp | unset (banner shown) |
+| `cookie_consent` | Percent-encoded compact JSON: granular categories + timestamp (see "Consent Logic") | unset (banner shown) |
 | `ccpa_opt_out` | `true` | unset |
 | `{project_name}_build` | running build stamp `{project_version}-{short_commit}` | set on first HTML response — drives the PART 9 version-change purge |
 
@@ -31659,7 +31659,7 @@ let message = cfg.privacy.get_consent_message();
 **Server handler (`POST /server/consent`) — the no-JS baseline:**
 
 ```rust
-// POST /server/consent sets the cookie_consent cookie (JSON value, 1 year, SameSite=Lax)
+// POST /server/consent sets the cookie_consent cookie (percent-encoded JSON value, 1 year, SameSite=Lax)
 // and redirects back to the referring page (303 See Other).
 // choice=accept  -> {"essential":true,"preferences":true,"analytics":true,"timestamp":...}
 // choice=decline -> {"essential":true,"preferences":false,"analytics":false,"timestamp":...}
@@ -31803,7 +31803,7 @@ The opt-out is a POST form on the privacy page to `/server/ccpa`; the server set
 
 ### Consent Logic (Granular)
 
-**Consent stored as JSON in the `cookie_consent` cookie:** `{"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}`
+**Consent stored as percent-encoded compact JSON in the `cookie_consent` cookie:** decoded value `{"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}`. The server writes it with `urlencoding::encode` and reads it with `urlencoding::decode` before `serde_json` parses it (the JS side uses `encodeURIComponent` and `decodeURIComponent`), because raw JSON punctuation is not a legal cookie value. A value that does not decode or parse counts as no consent cookie: the banner shows and every non-essential category is off
 
 | Condition | Show Banner | Essential | Preferences | Analytics |
 |-----------|-------------|-----------|-------------|-----------|

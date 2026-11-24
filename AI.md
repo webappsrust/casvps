@@ -4675,8 +4675,8 @@ cargo build --release --target x86_64-unknown-linux-musl
 | **Sanitize for context** | HTML-encode for HTML, SQL-parameterize for SQL |
 | **Reject unknown** | Allowlist permitted values, reject everything else |
 | **No direct execution** | Never pass user input directly to shell, SQL, eval |
-| **Trim whitespace** | `.trim()` on ALL text inputs before processing |
-| **Password whitespace** | Passwords must NOT start or end with whitespace (reject, don't trim) |
+| **Trim whitespace** | `.trim()` on every text input except a password input (next row) before processing |
+| **Password whitespace** | Passwords must NOT start or end with whitespace (reject, don't trim). A password input is a field whose HTML control is `type="password"` or whose request-model field is marked `secret`; that marker is the only classification, so nothing is guessed from a field name. The base fields are `password`, `current_password`, `new_password` and `confirm_password`, plus any passphrase or key-derivation input a project defines (for example a crypto API's `key`). Pasted tokens and `code` fields are ordinary text and are trimmed. The shared normalizer trims every unmarked text input and validates every marked one |
 
 ```rust
 // CORRECT - Parameterized query with sqlx
@@ -8554,7 +8554,7 @@ impl CreateResourceRequest {
 | Variable | Description |
 |----------|-------------|
 | `NO_COLOR` | Disable ANSI color output when set and non-empty (see PART 8) |
-| `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7) |
+| `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7); only an explicit `--color=yes` re-enables color sequences |
 | `DOMAIN` | FQDN override (used when no reverse-proxy headers are present; see `{fqdn}` resolution chain below) |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
@@ -9836,6 +9836,8 @@ Before proceeding, confirm you understand:
 | `/debug/memory` | GET | Memory/heap allocation statistics |
 | `/debug/tasks` | GET | Tokio task monitoring (task count) |
 
+**Credentials and debug output.** The debug endpoints return counts, sizes and routes, never memory contents, so none can expose a credential value, and the "always redacted in dumps" rule holds without a sanitizing layer. The one risky output is the process arguments: `/debug/vars` prints only the binary name, never the arguments. No endpoint produces a heap dump or a core file, the one artifact that would hold credential bytes. Every `/debug/*` request still needs the operator token.
+
 ### Debug Implementation
 
 ```rust
@@ -10568,7 +10570,7 @@ fn auto_detect_mode(
 
 | Feature | Normal Terminal | TERM=dumb |
 |---------|-----------------|-----------|
-| ANSI colors | ✅ Yes | ❌ No |
+| ANSI colors | ✅ Yes | ❌ No (only an explicit `--color=yes` forces color sequences) |
 | Emojis | ✅ Yes | ❌ No |
 | Cursor movement | ✅ Yes | ❌ No |
 | Clear screen | ✅ Yes | ❌ No |
@@ -10580,7 +10582,7 @@ fn auto_detect_mode(
 **Behaviors when `TERM=dumb`:**
 
 1. **Force CLI mode** - Never launch TUI, even if interactive
-2. **No ANSI escapes** - No colors, no cursor control, no clearing
+2. **No ANSI escapes** - No colors, no cursor control, no clearing. The one override is an explicit `--color=yes`: it adds color sequences only, never cursor control, clearing, emojis, spinners or the TUI
 3. **No emojis** - Use text equivalents (`[OK]`, `[ERROR]`, `[WARN]`)
 4. **Simple output** - Plain text, line-by-line
 5. **No spinners** - Use `Processing...` / `Done.` instead
@@ -11089,7 +11091,7 @@ When the `NO_COLOR` environment variable is set and not empty (value doesn't mat
 
 | Priority | Source | Example |
 |----------|--------|---------|
-| 1 | CLI flag | `--color=yes`, `--color=no` |
+| 1 | CLI flag | `--color=yes`, `--color=no` (`--color=yes` also overrides `TERM=dumb`, for color sequences only; every other `TERM=dumb` restriction stays) |
 | 2 | Config file | `output.color: false` |
 | 3 | `NO_COLOR` env var | `NO_COLOR=1` |
 | 4 | Auto-detect | TTY check, `TERM` variable |
@@ -19830,9 +19832,11 @@ server:
 | `discord` | Webhook URL | `POST {url}` body `{"content": "<message>", "username": "{app_name}"}` |
 | `slack` | Incoming Webhook URL | `POST {url}` body `{"text": "<message>"}` |
 | `mattermost` | Incoming Webhook URL | Slack-compatible body |
-| `pushover` | Pushover API URL with `user`/`token` | Standard Pushover params |
-| `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` |
+| `pushover` | `https://api.pushover.net/1/messages.json` with `user` and `token` query parameters | `POST {url}` form fields `user`, `token`, `title` (the subject), `message` (the body) and `priority` (mapping below) |
+| `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` (mapping below) |
 | `generic` | Any HTTPS URL | `POST {url}` JSON body: `{role, event, subject, body, severity, timestamp, project_name, project_version, app_url, tracking_id?}` |
+
+**Severity and priority.** `severity` is `info`, `warning` or `critical` (a success or info event is `info`, a warning is `warning`, an error is `critical`). Pushover `priority` is `0` for `info` and `warning` and `1` for `critical`; the emergency priority `2` is never used because it needs retry and expire parameters. Gotify `priority` is `2` for `info`, `5` for `warning` and `8` for `critical`.
 
 **Additional transports can be plugged in by adding adapters in `src/notify/`. The config schema above is open — any key under `webhooks` is treated as a transport name, and the adapter for that name is invoked.**
 
@@ -25649,7 +25653,7 @@ footer p {
 
 | Rule | Detail |
 |------|--------|
-| **No horizontal overflow, ever** | At every viewport from 320 px up, `document.documentElement.scrollWidth <= window.innerWidth` with NO `overflow-x` backstop applied. A page wider than the screen makes mobile browsers shrink the whole layout (content at ~60% width with a dead strip beside it). Typical causes, all banned: negative-offset off-canvas boxes, fixed pixel widths, `100vw` widths (use `100%`), images without `max-width: 100%`, tables outside a scroll wrapper, unwrapped long strings (see "Long Strings"). `body { overflow-x: clip }` may exist as a last-resort backstop only |
+| **No horizontal overflow, ever** | At every viewport from 320 px up, `document.documentElement.scrollWidth <= window.innerWidth` with the `overflow-x` backstop DISABLED (the automated test removes it first). A page wider than the screen makes mobile browsers shrink the whole layout (content at ~60% width with a dead strip beside it). Typical causes, all banned: negative-offset off-canvas boxes, fixed pixel widths, `100vw` widths (use `100%`), images without `max-width: 100%`, tables outside a scroll wrapper, unwrapped long strings (see "Long Strings"). `body { overflow-x: clip }` may exist in the shipped CSS as a last-resort backstop only; a layout that passes only because of it fails the test |
 | **Content fills the viewport width correctly** | The `.container` rules above apply on every page: phones use the full width minus `1rem` padding; a content column is centered, never stuck left with dead space on the right |
 | **Fixed/overlay containment** | See "Drawer containment" in the header / navigation section ("Mobile Menu Behavior"). Overlays are direct children of `<body>`; no `transform`, `filter`, `backdrop-filter`, `contain` or `will-change` on an ancestor of a `position: fixed` element |
 | **Dynamic viewport** | `100dvh` / `min-height: 100dvh`, never bare `100vh` (mobile browser bars); `env(safe-area-inset-*)` padding on anything touching a screen edge (drawer, toast, banner, bottom actions) |
@@ -27027,7 +27031,7 @@ No JS required — the button is a real form submit whose target is the server-c
 | **Submit validation** | Re-validate all fields on submit, focus first error |
 | **Accessible errors** | Use `aria-describedby` to link error to field |
 | **Trim whitespace** | Trim leading/trailing whitespace on all text inputs before validation |
-| **Password whitespace** | Reject passwords with leading/trailing whitespace (show error, don't trim) |
+| **Password whitespace** | Reject passwords with leading/trailing whitespace (show error, don't trim); which fields are passwords is defined once in PART 1 -> Input Validation |
 
 **Error Message Style:**
 ```html
@@ -31271,7 +31275,7 @@ pub fn validate_footer_html(html: &str) -> Result<String, anyhow::Error> {
 | Allowed | Blocked (Stripped) |
 |---------|-------------------|
 | `<p>`, `<br>`, `<span>`, `<div>` | `<script>`, `<noscript>` |
-| `<strong>`, `<b>`, `<em>`, `<i>` | `<iframe>`, `<frame>` |
+| `<strong>`, `<b>`, `<em>`, `<i>`, `<u>`, `<s>`, `<small>` | `<iframe>`, `<frame>` |
 | `<a href="...">` | `<object>`, `<embed>` |
 | `<img src="...">` | `<form>`, `<input>`, `<button>` |
 | `<ul>`, `<ol>`, `<li>` | `<style>`, `<link>` |

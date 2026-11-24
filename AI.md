@@ -1396,7 +1396,7 @@ paths:
 | client | CLI binary `{project_name}-cli` - REQUIRED |
 | agent | Optional binary `{project_name}-agent` |
 | Server Admin | App administrator (NOT OS root) |
-| Regular User | End-user (PART 34, optional feature) |
+| Regular User | End-user (PART 34, optional: active only when SPEC.md declares it) |
 
 ## COMPLIANCE CHECK
 Before completing ANY task:
@@ -1650,7 +1650,7 @@ On EVERY new conversation or after "context compacted" message:
 ## Account Types (CRITICAL)
 - **Server Admin** = manages the app (NOT a privileged OS user)
 - **Primary Admin** = first admin, cannot be deleted
-- **Regular User** = end-user (PART 34, optional feature)
+- **Regular User** = end-user (PART 34, optional: active only when SPEC.md declares it)
 - Server Admins ≠ Regular Users (separate DB tables)
 
 ## Cluster vs Managed Nodes (CRITICAL)
@@ -1703,18 +1703,15 @@ On EVERY new conversation or after "context compacted" message:
 - Frontend/WebUI: `.claude/rules/frontend-rules.md` (PART 16, 17)
 - Full spec: `AI.md` (~64k lines) ← **SOURCE OF TRUTH**
 
-## Current Project State
-[AI updates this section as work progresses]
-- Last read AI.md: [date/time]
-- Current task: [description]
-- Relevant PARTs: [list]
+## Progress
+No progress or date-specific state lives in this file or in AI.md: the loader stays project-neutral. Current task, status and the PARTs in play are tracked in `TODO.AI.md` or `PLAN.AI.md`.
 ```
 
 **Rules:**
 - This file is ALWAYS loaded first by the AI tool
 - Keep it under 100 lines - it's a quick reference, not the full spec
 - Points to rules/ files and AI.md for details
-- "Current Project State" section updated by AI as work progresses
+- Progress is tracked in `TODO.AI.md` / `PLAN.AI.md`, never in CLAUDE.md or AI.md
 - Existing valid `CLAUDE.md` content must be merged/migrated, not blindly replaced
 
 **AI Enforcement - Surviving Context Compaction:**
@@ -6179,7 +6176,7 @@ panic = "unwind"
 
 | Project License | Can Use Dependencies Licensed As |
 |----------------|----------------------------------|
-| **MIT** | MIT, Apache 2.0, BSD, ISC, Public Domain |
+| **MIT** | MIT, Apache 2.0, BSD, ISC, MPL 2.0 (as an unmodified dependency: its file-level copyleft covers only its own files; a modified MPL file is published under MPL, and attribution is required as above), Public Domain |
 | **MIT** | **CANNOT use:** GPL, AGPL, LGPL |
 
 **When in doubt:** Choose MIT/Apache 2.0/BSD licensed alternatives.
@@ -19854,7 +19851,7 @@ server:
 | `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` (mapping below) |
 | `generic` | Any HTTPS URL | `POST {url}` JSON body: `{role, event, subject, body, severity, timestamp, project_name, project_version, app_url, tracking_id?}` |
 
-**Generic payload `timestamp`.** The event time as an RFC 3339 string in UTC with a `Z` suffix and whole seconds (`2026-01-15T10:30:00Z`), set by the server when the event is raised, never local time. It is the same instant as the `X-Webhook-Timestamp` header, which carries it as Unix seconds.
+**Generic payload `timestamp`.** The event time as an RFC 3339 string in UTC with a `Z` suffix and whole seconds (`2026-01-15T10:30:00Z`), set by the server when the event is raised, never local time. It is the immutable event time and is NOT the `X-Webhook-Timestamp` header: that header is the send time of THIS delivery attempt, so every retry gets a fresh one and stays inside the receiver's replay window.
 
 **Severity and priority.** `severity` is `info`, `warning` or `critical` (a success or info event is `info`, a warning is `warning`, an error is `critical`). Pushover `priority` is `0` for `info` and `warning` and `1` for `critical`; the emergency priority `2` is never used because it needs retry and expire parameters. Gotify `priority` is `2` for `info`, `5` for `warning` and `8` for `critical`.
 
@@ -19867,7 +19864,7 @@ Every outbound webhook POST includes these headers so the receiver can verify th
 | Header | Value |
 |--------|-------|
 | `X-Webhook-Signature` | `sha256=<hex_hmac>` where `hmac = HMAC-SHA256(per_webhook_secret, request_body_bytes)`. The `per_webhook_secret` is generated whenever the webhook URL is set and its secret is empty (random 32 bytes, persisted in `secrets.yml` as `server.contact.{role}.webhooks.{transport}_secret`, the sibling of the URL key `{transport}`). It is never returned by any API response and never shown in the admin panel: the operator reads it from `secrets.yml` (mode `0600`) to configure the receiving end. |
-| `X-Webhook-Timestamp` | Unix seconds — receiver SHOULD reject if delta exceeds `±5 min` to prevent replay |
+| `X-Webhook-Timestamp` | Unix seconds of THIS delivery attempt, set again on every retry (the payload `timestamp` stays the immutable event time) — receiver SHOULD reject if delta exceeds `±5 min` to prevent replay |
 | `X-Webhook-ID` | UUID v7 (PART 13) — idempotency key the receiver can use to deduplicate retries |
 | `X-Webhook-Event` | The event type (e.g., `security.report_received`, `admin.cluster_failover`) |
 | `User-Agent` | `{project_name}/{project_version} (+{app_url})` |
@@ -32827,7 +32824,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 | `#limits` | Behavior and limits | `POST` only; no sessions; the same rate limits and audit as the API; `Origin` validated; the supported MCP protocol versions |
 | `#troubleshooting` | Troubleshooting | A table of `400` (protocol-version or header mismatch), `401` (missing, invalid or expired token — `WWW-Authenticate: Bearer`), `403` (bad `Origin` or insufficient scope), `405` (GET or DELETE; the endpoint is POST-only) with the fix for each |
 
-**Project expansion (required content):** the project appends its own section, `#project`, after the base sections. The text comes from IDEA.md `## Business logic` and is stored as Markdown in `server.pages.help.mcp` (canonical storage is `server.yml` `server.pages.help.mcp`, edited there by the operator and applied on config reload; a project that has an admin panel also exposes it in Pages → Help. API projects have no admin panel or web editor, so `server.yml` is the only editing path). It MUST use the project's real tool names and real data — example prompts a user can paste into an assistant, per-tool tips and limits, and documentation of any MCP resources or prompts the project exposes. It never repeats or contradicts the base sections, and generic placeholder text is forbidden (same rule as `/server/help`).
+**Project expansion (required content):** the project appends its own section, `#project`, after the base sections. The text comes from IDEA.md `## Business logic` and is stored as Markdown in `server.pages.help.mcp` (canonical storage is `server.yml` `server.pages.help.mcp`, edited there by the operator and applied on config reload; the admin panel also exposes it in Pages → Help, and both write the same `server.yml` value). It MUST use the project's real tool names and real data — example prompts a user can paste into an assistant, per-tool tips and limits, and documentation of any MCP resources or prompts the project exposes. It never repeats or contradicts the base sections, and generic placeholder text is forbidden (same rule as `/server/help`).
 
 **JSON body (`GET /api/{api_version}/server/help/mcp`, envelope `{ "ok": true, "data": ... }`; field names are fixed):**
 ```json
@@ -49940,7 +49937,7 @@ fi
 3. Install test tools in container (Docker: `apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates`)
 4. Copy binaries to test container
 5. Start server and capture logs (for setup token extraction)
-6. Run full beta test suite:
+6. Run the beta test suite below (identical in both scripts: operator-token authentication and the full CLI checks are required in BOTH; only the init-system and service-lifecycle checks belong to `incus.sh` alone):
    - Version and help checks (server, CLI, agent if built)
    - Binary info verification
    - **Binary rename tests** (copy binary, verify --help shows new name)
@@ -49955,7 +49952,7 @@ fi
 
 #### tests/docker.sh
 
-**Purpose:** The basic tier: the binary-validation suite in one Docker Alpine container (does it start and answer, Tor and I2P health included). The shipped image is checked after `make docker` and in CI ("Image check"), not here. No init system and no service lifecycle: those belong to `tests/incus.sh`
+**Purpose:** The basic tier: the beta suite in one Docker Alpine container (does it start and answer, operator-token and CLI checks and Tor and I2P health included): the same suite as `tests/incus.sh` minus the init-system and service-lifecycle steps. The shipped image is checked after `make docker` and in CI ("Image check"), not here. No init system and no service lifecycle: those belong to `tests/incus.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -70675,7 +70672,7 @@ Before starting integration:
 - Work incrementally
 - Test continuously
 - Document everything
-- Get approval at each phase
+- Get human approval before a phase only when it introduces breaking behavior, destructive migration steps, production-impacting risk or unresolved scope decisions (the Phase 4 rule); every other phase proceeds without waiting
 - Preserve existing functionality unless explicitly changing it
 - NEVER rush integration to "get it done faster"
 

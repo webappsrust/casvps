@@ -41998,6 +41998,7 @@ fn run_service() -> anyhow::Result<()> {
 | `build` | Full release (all 7 platforms) | `binaries/` | Before release |
 | `test` | Run unit tests | Coverage report | After code changes |
 | `release` | Release with source archive | `releases/` | Creating releases |
+| `beta` | Tag the current `main` commit `YYYYMMDDHHMMSS-beta` and push the tag; CI builds and publishes the beta | a tag only | Publishing a beta (maintainer) |
 | `docker` | Build container (no push — CI/CD pushes) | `$REGISTRY` tags | Container deployment |
 
 ## Versioning
@@ -42265,7 +42266,7 @@ RUST_DOCKER_RUN := timeout -k 30 $(DOCKER_TIMEOUT) docker run --rm --no-healthch
 	-e OFFICIAL_SITE="$(OFFICIAL_SITE)"
 RUST_DOCKER := $(RUST_DOCKER_RUN) casjaysdev/rust:latest
 
-.PHONY: build local release release-check docker test dev clean
+.PHONY: build local release release-check beta docker test dev clean
 
 # =============================================================================
 # BUILD - Build all platforms + local binary (via Docker with cached registry)
@@ -42346,6 +42347,13 @@ local: clean
 # Stable SemVer only: a devel version (short commit id or "devel") and any prerelease (-beta, -rc) are published by CI, never by this target
 release-check:
 	@echo "$(VERSION)" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' >/dev/null || { echo "ERROR: make release needs a stable SemVer X.Y.Z in release.txt (got '$(VERSION)')" >&2; exit 78; }
+
+# beta tags the current commit YYYYMMDDHHMMSS-beta and pushes the tag; CI builds and publishes the beta. It never creates a branch
+# and is run by the maintainer, like release (gitcommit has no tag operation)
+beta:
+	@[ "$$(git branch --show-current)" = main ] || { echo "beta: run it on main"; exit 1; }
+	@[ -z "$$(git status --porcelain)" ] || { echo "beta: the working tree is not clean"; exit 1; }
+	@TAG=$$(date -u +%Y%m%d%H%M%S)-beta; git tag "$$TAG" && git push origin "refs/tags/$$TAG" && echo "Pushed $$TAG"
 
 release: release-check build
 	@mkdir -p $(RELDIR)
@@ -42775,7 +42783,7 @@ The **only** times binaries are copied are the CI/CD release process, the `make 
 
 | Property | Value |
 |----------|-------|
-| Trigger | Push to `beta` branch |
+| Trigger | Push of a `YYYYMMDDHHMMSS-beta` tag (`make beta`); there is no beta branch |
 | Version format | `{YYYYMMDDHHMMSS}-beta` - TEXT, NO `v` prefix |
 | Release name | `{YYYYMMDDHHMMSS}-beta` (e.g., `20251205143022-beta`) |
 | version.txt | `{YYYYMMDDHHMMSS}-beta` |
@@ -42811,7 +42819,7 @@ The **only** times binaries are copied are the CI/CD release process, the `make 
 |--------------|---------|-----------------|--------------|-------------|
 | **Stable** | `v1.2.3` or `1.2.3` | ✓ YES (numbers) | `v1.2.3` | `1.2.3` |
 | **Stable** | `v0.2.0` or `0.2.0` | ✓ YES (numbers) | `v0.2.0` | `0.2.0` |
-| **Beta** | (branch push) | ✗ NO (timestamp) | `20251205-beta` | `20251205-beta` |
+| **Beta** | (`beta-` tag push) | ✗ NO (timestamp) | `20251205-beta` | `20251205-beta` |
 | **Devel** | `devel` (rolling, deleted and recreated nightly) | ✗ NO (literal tag) | `devel` | `a1b2c3d` (commit id) |
 | **Dev** | `dev` | ✗ NO (text) | `dev` | `dev` |
 
@@ -44547,7 +44555,7 @@ networks:
 - Use CI-native caching (NOT local host paths)
 - Set VERSION, COMMIT_ID, BUILD_EPOCH explicitly via environment variables passed to the build (BUILD_DATE is derived from BUILD_EPOCH at runtime, not passed to cargo build)
 - Build all platforms in matrix: the Release, Beta and Devel workflows build every target; the CI workflow's `build` job is a compile gate for the container's own platform
-- Auto-cancel older in-progress runs for the same ref on push workflows targeting `main`, `master`, or `beta`
+- Auto-cancel older in-progress runs for the same ref on push workflows targeting `main` or `master`
 
 **CI/CD workflows MUST NOT:**
 - Reference local user paths like `~/.cargo` (use `/tmp/` or CI-native caching)
@@ -44577,14 +44585,14 @@ networks:
 |------|---------|---------|
 | `ci.yml` | Push, PR to default branch; security jobs also run on weekly cron | Build + test + lint + coverage + secret scanning + image scanning + workflow-policy |
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
-| `beta.yml` | Push to `beta` branch | Beta releases |
+| `beta.yml` | Push of a `*-beta` tag | Beta releases |
 | `devel.yml` | Daily at 3am UTC + push to main/master | Devel builds |
 | `docker.yml` | Version tag, push to main/master/beta + daily at 4am UTC | Standard Docker image (`build-standard` job) + devel image (`build-devel` job, `:devel`, built from `docker/Dockerfile.dev`) |
 | `docker-aio.yml` | Version tag, push to main/master/beta | All-in-one Docker image (`-aio` tags) — the only image type with its own dedicated workflow file |
 
 **Note:** By default Rust projects have no `build-toolchain.yml` or `docker/Dockerfile.build`. CI jobs use `container: image: casjaysdev/rust:latest` directly — no `ensure-build-image` gate, no toolchain image build step. A genuine custom need is the only exception, and then `Dockerfile.build` MUST be `FROM casjaysdev/rust:latest` with the standard toolchain workflow pattern.
 
-**Branch push auto-cancel policy:** Any workflow triggered by pushes to `main`, `master`, or `beta` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `beta.yml`, `devel.yml`, `docker.yml`, and any project-specific branch-push workflow).
+**Branch push auto-cancel policy:** Any workflow triggered by pushes to `main` or `master` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `beta.yml`, `devel.yml`, `docker.yml`, and any project-specific branch-push workflow).
 
 **Tag release auto-cancel policy:** Tag-only release workflows like `release.yml` MUST also use workflow concurrency, but only per exact tag ref. A newer run for `refs/tags/v1.2.3` should cancel the older `refs/tags/v1.2.3` run. A run for `v1.2.4` must NOT cancel `v1.2.3`.
 
@@ -44596,7 +44604,7 @@ All workflows MUST set these environment variables:
 
 ```yaml
 # Set in "Set build info" step, NOT as static env:
-#   VERSION per channel: release = "${GITHUB_REF_NAME#v}", devel = "$(git rev-parse --short=7 HEAD)", beta = "$(date -u +%Y%m%d%H%M%S)-beta" (never release.txt)
+#   VERSION per channel: release = "${GITHUB_REF_NAME#v}", devel = "$(git rev-parse --short=7 HEAD)", beta = "${GITHUB_REF_NAME}" (the tag YYYYMMDDHHMMSS-beta is the version) (never release.txt)
 #   echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
 #   BUILD_EPOCH is the single captured time source; BUILD_DATE is derived from it
 #   BUILD_EPOCH="$(date -u +%s)"
@@ -44992,8 +45000,9 @@ name: Beta Release
 
 on:
   push:
-    branches:
-      - beta
+    # A beta is published by pushing the tag YYYYMMDDHHMMSS-beta (`make beta`); there is no beta branch
+    tags:
+      - '*-beta'
   workflow_dispatch:
 
 concurrency:
@@ -45017,7 +45026,8 @@ jobs:
       - name: Compute version
         id: v
         run: |
-          STAMP="$(date -u +%Y%m%d%H%M%S)"
+          # The pushed tag YYYYMMDDHHMMSS-beta carries the stamp; a manual run computes one
+          if [[ "${GITEA_REF_TYPE}" == "tag" ]]; then STAMP="${GITEA_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
           VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
@@ -45223,7 +45233,7 @@ on:
 
 concurrency:
   group: devel-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
 permissions:
   contents: read
@@ -45448,8 +45458,8 @@ jobs:
 
 | Trigger | Standard Tags | All-in-One Tags |
 |---------|---------------|-----------------|
-| **Any push** (all branches) | `{commit_id}` | `{commit_id}-aio` |
-| Push to beta branch | `beta`, `{commit_id}` | `beta-aio`, `{commit_id}-aio` |
+| **Any push to main** | `{commit_id}` | `{commit_id}-aio` |
+| Push of a `*-beta` tag | `beta`, `{commit_id}` | `beta-aio`, `{commit_id}-aio` |
 | Version tag (`v*`, `*.*.*`) | `{version}`, `latest`, `{yymm}` | `{version}-aio`, `latest-aio`, `{yymm}-aio` |
 
 **Note:** `:devel` is built by the `build-devel` job inside this same `docker.yml` workflow, from `docker/Dockerfile.dev`, on a daily schedule (`cron: '0 4 * * *'`) and on every push to `main`/`master`, plus `workflow_dispatch` on those branches. Standard image only — no `docker/Dockerfile.dev.aio` variant exists, so there is no `:devel-aio` tag.
@@ -45469,18 +45479,19 @@ name: Docker Build
 
 on:
   push:
-    # ALL branches
-    branches: ['**']
+    # main only: branches are local and temporary, never pushed
+    branches: [main, master]
     tags:
       - 'v*'
       - '*.*.*'
+      - '*-beta'
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
 
 concurrency:
   group: docker-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
 env:
   PROJECT_NAME: {project_name}
@@ -45522,7 +45533,7 @@ jobs:
             echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITHUB_ENV
           fi
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref }}" != refs/tags/*-beta ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
             echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
             echo "IS_TAG=true" >> $GITHUB_ENV
@@ -45545,7 +45556,7 @@ jobs:
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.YYMM }}"
           else
-            if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
+            if [[ "${{ github.ref }}" == refs/tags/*-beta ]]; then
               TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta"
             fi
           fi
@@ -45697,16 +45708,17 @@ name: Docker AIO Build
 
 on:
   push:
-    # ALL branches
-    branches: ['**']
+    # main only: branches are local and temporary, never pushed
+    branches: [main, master]
     tags:
       - 'v*'
       - '*.*.*'
+      - '*-beta'
   workflow_dispatch:
 
 concurrency:
   group: docker-aio-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
 env:
   PROJECT_NAME: {project_name}
@@ -45747,7 +45759,7 @@ jobs:
             echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITHUB_ENV
           fi
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref }}" != refs/tags/*-beta ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
             echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
             echo "IS_TAG=true" >> $GITHUB_ENV
@@ -45772,7 +45784,7 @@ jobs:
             TAGS="$TAGS,${IMAGE}:latest-aio"
             TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
           else
-            if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
+            if [[ "${{ github.ref }}" == refs/tags/*-beta ]]; then
               TAGS="$TAGS,${IMAGE}:beta-aio"
             fi
           fi
@@ -45880,7 +45892,7 @@ For self-hosted runners, change `runs-on: ubuntu-26.04` to your runner label.
 |------|---------|---------|
 | `ci.yml` | Push and pull requests; weekly schedule for security jobs | Build, test, lint, coverage, security jobs |
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
-| `beta.yml` | Push to `beta` branch | Beta releases |
+| `beta.yml` | Push of a `*-beta` tag | Beta releases |
 | `devel.yml` | Daily at 3am UTC + push to main/master | Devel builds |
 | `docker.yml` | Version tag, push to main/master/beta + daily at 4am UTC | Standard Docker image (`build-standard` job) + devel image (`build-devel` job, `:devel`, built from `docker/Dockerfile.dev`) |
 | `docker-aio.yml` | Version tag, push to main/master/beta | All-in-one Docker image (`-aio` tags) — the only image type with its own dedicated workflow file |
@@ -46232,8 +46244,9 @@ name: Beta Release
 
 on:
   push:
-    branches:
-      - beta
+    # A beta is published by pushing the tag YYYYMMDDHHMMSS-beta (`make beta`); there is no beta branch
+    tags:
+      - '*-beta'
   workflow_dispatch:
 
 concurrency:
@@ -46257,7 +46270,8 @@ jobs:
       - name: Compute version
         id: v
         run: |
-          STAMP="$(date -u +%Y%m%d%H%M%S)"
+          # The pushed tag YYYYMMDDHHMMSS-beta carries the stamp; a manual run computes one
+          if [[ "${GITEA_REF_TYPE}" == "tag" ]]; then STAMP="${GITEA_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
           VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITEA_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
@@ -46453,7 +46467,7 @@ on:
 
 concurrency:
   group: devel-${{ gitea.ref }}-${{ gitea.event_name }}
-  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' || gitea.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' }}
 
 permissions:
   contents: read
@@ -46662,18 +46676,19 @@ name: Docker Build
 
 on:
   push:
-    # ALL branches
-    branches: ['**']
+    # main only: branches are local and temporary, never pushed
+    branches: [main, master]
     tags:
       - 'v*'
       - '*.*.*'
+      - '*-beta'
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
 
 concurrency:
   group: docker-${{ gitea.ref }}-${{ gitea.event_name }}
-  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' || gitea.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' }}
 
 env:
   PROJECT_NAME: {project_name}
@@ -46723,7 +46738,7 @@ jobs:
             echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
           fi
           echo "YYMM=$(date +"%y%m")" >> $GITEA_ENV
-          if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ gitea.ref }}" == refs/tags/* && "${{ gitea.ref }}" != refs/tags/*-beta ]]; then
             VERSION="${GITEA_REF_NAME}"
             # Strip 'v' prefix
             echo "VERSION=${VERSION#v}" >> $GITEA_ENV
@@ -46749,8 +46764,8 @@ jobs:
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.YYMM }}"
           else
-            # Beta branch also gets beta tag
-            if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
+            # A *-beta tag also gets the beta image tag
+            if [[ "${{ gitea.ref }}" == refs/tags/*-beta ]]; then
               TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta"
             fi
           fi
@@ -46909,16 +46924,17 @@ name: Docker AIO Build
 
 on:
   push:
-    # ALL branches
-    branches: ['**']
+    # main only: branches are local and temporary, never pushed
+    branches: [main, master]
     tags:
       - 'v*'
       - '*.*.*'
+      - '*-beta'
   workflow_dispatch:
 
 concurrency:
   group: docker-aio-${{ gitea.ref }}
-  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' || gitea.ref == 'refs/heads/beta' }}
+  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' }}
 
 env:
   PROJECT_NAME: {project_name}
@@ -46965,7 +46981,7 @@ jobs:
             echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
           fi
           echo "YYMM=$(date +"%y%m")" >> $GITEA_ENV
-          if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ gitea.ref }}" == refs/tags/* && "${{ gitea.ref }}" != refs/tags/*-beta ]]; then
             VERSION="${GITEA_REF_NAME}"
             echo "VERSION=${VERSION#v}" >> $GITEA_ENV
             echo "IS_TAG=true" >> $GITEA_ENV
@@ -46990,7 +47006,7 @@ jobs:
             TAGS="$TAGS,${IMAGE}:latest-aio"
             TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
           else
-            if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
+            if [[ "${{ gitea.ref }}" == refs/tags/*-beta ]]; then
               TAGS="$TAGS,${IMAGE}:beta-aio"
             fi
           fi
@@ -47357,7 +47373,7 @@ test:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_BRANCH == "beta"
+    - if: $CI_COMMIT_TAG =~ /-beta$/
 
 # =============================================================================
 # RELEASE (GitLab Release)
@@ -47434,14 +47450,14 @@ release:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
 
 # =============================================================================
-# BETA BUILDS (Push to beta branch)
+# BETA BUILDS (push of a YYYYMMDDHHMMSS-beta tag)
 # =============================================================================
 
 build:beta:
   <<: *rust-build
   stage: build
   before_script:
-    - export VERSION="$(date +%Y%m%d%H%M%S)-beta"
+    - export VERSION="${CI_COMMIT_TAG}"
     - export COMMIT_ID="${CI_COMMIT_SHA:0:7}"
     # BUILD_EPOCH is the single captured time source; BUILD_DATE is derived from it
     - export BUILD_EPOCH="$(date -u +%s)"
@@ -47483,7 +47499,7 @@ build:beta:
       dotenv: release.env
     expire_in: 1 week
   rules:
-    - if: $CI_COMMIT_BRANCH == "beta"
+    - if: $CI_COMMIT_TAG =~ /-beta$/
 
 release:beta:
   stage: release
@@ -47510,35 +47526,35 @@ release:beta:
       - ${PROJECT_NAME}-*
     expire_in: 1 week
   release:
-    tag_name: "$RELEASE_VERSION"
+    tag_name: "$CI_COMMIT_TAG"
     name: "Beta $RELEASE_VERSION"
     description: "Beta release created by GitLab CI"
     assets:
       links:
         - name: "${PROJECT_NAME}-linux-amd64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-linux-amd64?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-linux-amd64?job=build:beta"
         - name: "${PROJECT_NAME}-linux-arm64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-linux-arm64?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-linux-arm64?job=build:beta"
         - name: "${PROJECT_NAME}-darwin-amd64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-darwin-amd64?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-darwin-amd64?job=build:beta"
         - name: "${PROJECT_NAME}-darwin-arm64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-darwin-arm64?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-darwin-arm64?job=build:beta"
         - name: "${PROJECT_NAME}-windows-amd64.exe"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-windows-amd64.exe?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-windows-amd64.exe?job=build:beta"
         - name: "${PROJECT_NAME}-windows-arm64.exe"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-windows-arm64.exe?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-windows-arm64.exe?job=build:beta"
         - name: "${PROJECT_NAME}-freebsd-amd64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-freebsd-amd64?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-freebsd-amd64?job=build:beta"
         - name: "${PROJECT_NAME}-sbom.cdx.json"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-sbom.cdx.json?job=build:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-sbom.cdx.json?job=build:beta"
         - name: "${PROJECT_NAME}-${RELEASE_VERSION}-source.tar.gz"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/${PROJECT_NAME}-${RELEASE_VERSION}-source.tar.gz?job=release:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/${PROJECT_NAME}-${RELEASE_VERSION}-source.tar.gz?job=release:beta"
         - name: "sha256.txt"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/sha256.txt?job=release:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/sha256.txt?job=release:beta"
         - name: "sha512.txt"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_BRANCH}/raw/sha512.txt?job=release:beta"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/sha512.txt?job=release:beta"
   rules:
-    - if: $CI_COMMIT_BRANCH == "beta"
+    - if: $CI_COMMIT_TAG =~ /-beta$/
 
 # =============================================================================
 # DEVEL BUILDS (Scheduled + main/master push) - All 7 platforms
@@ -47679,13 +47695,13 @@ docker:build:
   script:
     - |
       # Determine version and tags based on trigger
-      if [ -n "$CI_COMMIT_TAG" ]; then
+      if [ "${CI_COMMIT_TAG%-beta}" != "$CI_COMMIT_TAG" ]; then
+        VERSION="${CI_COMMIT_TAG}"
+        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
+      elif [ -n "$CI_COMMIT_TAG" ]; then
         VERSION="${CI_COMMIT_TAG#v}"
         YYMM=$(date +%y%m)
         TAGS="-t $CI_REGISTRY_IMAGE:$VERSION -t $CI_REGISTRY_IMAGE:latest -t $CI_REGISTRY_IMAGE:$YYMM -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
-      elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
-        VERSION="$(date -u +%Y%m%d%H%M%S)-beta"
-        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
       else
         VERSION="${CI_COMMIT_SHA:0:7}"
         TAGS="-t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
@@ -47734,7 +47750,7 @@ docker:build:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_BRANCH == "beta"
+    - if: $CI_COMMIT_TAG =~ /-beta$/
 
 docker:build-aio:
   stage: docker
@@ -47751,7 +47767,10 @@ docker:build-aio:
     - |
       # AIO uses same repo with -aio tag suffix: {repo}:{tag}-aio
       IMAGE="${CI_REGISTRY_IMAGE}"
-      if [ -n "$CI_COMMIT_TAG" ]; then
+      if [ "${CI_COMMIT_TAG%-beta}" != "$CI_COMMIT_TAG" ]; then
+        VERSION="${CI_COMMIT_TAG}"
+        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
+      elif [ -n "$CI_COMMIT_TAG" ]; then
         VERSION="${CI_COMMIT_TAG#v}"
         YYMM=$(date +%y%m)
         TAGS="-t ${IMAGE}:${VERSION}-aio -t ${IMAGE}:latest-aio -t ${IMAGE}:${YYMM}-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
@@ -47804,7 +47823,7 @@ docker:build-aio:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_BRANCH == "beta"
+    - if: $CI_COMMIT_TAG =~ /-beta$/
 
 # =============================================================================
 # DOCKER DEVEL BUILD (dedicated job — never folded into docker:build)
@@ -47940,14 +47959,14 @@ Jenkins provides equivalent functionality to GitHub Actions, Gitea Actions, and 
 |---------|-------|
 | Agents | `arm64`, `amd64` (both required) |
 | Build | All 7 platforms in parallel |
-| Triggers | Tag push, beta branch, main/master, scheduled daily |
+| Triggers | Tag push (release and `*-beta`), main/master, scheduled daily |
 
 ## Triggers (Matching GitHub Actions)
 
 | Trigger | Jenkins Config | Equivalent To |
 |---------|----------------|---------------|
 | Tag push | `when { buildingTag() }` | `release.yml` |
-| Beta branch | `when { branch 'beta' }` | `beta.yml` |
+| Beta tag | `when { tag '*-beta' }` | `beta.yml` |
 | Main/master | `when { anyOf { branch 'main'; branch 'master' } }` | `devel.yml` |
 | Scheduled | `triggers { cron('0 3 * * *') }` | `devel.yml` schedule |
 | All branches | Default (no `when`) | `docker.yml` |
@@ -48014,14 +48033,14 @@ pipeline {
             steps {
                 script {
                     // Determine build type and version
-                    if (env.TAG_NAME) {
+                    if (env.TAG_NAME?.endsWith('-beta')) {
+                        // Beta build (tag YYYYMMDDHHMMSS-beta) - matches beta.yml
+                        env.BUILD_TYPE = 'beta'
+                        env.VERSION = env.TAG_NAME
+                    } else if (env.TAG_NAME) {
                         // Release build (tag push) - matches release.yml
                         env.BUILD_TYPE = 'release'
                         env.VERSION = env.TAG_NAME.replaceFirst('^v', '')
-                    } else if (env.BRANCH_NAME == 'beta') {
-                        // Beta build - matches beta.yml
-                        env.BUILD_TYPE = 'beta'
-                        env.VERSION = sh(script: 'date -u +"%Y%m%d%H%M%S"', returnStdout: true).trim() + '-beta'
                     } else if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
                         // Devel build - matches devel.yml
                         // Devel identity is the commit, not a timestamp - a devel build IS its commit
@@ -48644,7 +48663,7 @@ pipeline {
             }
         }
 
-        // Beta Release - matches beta.yml (beta branch only)
+        // Beta Release - matches beta.yml (*-beta tag only)
         stage('Release: Beta') {
             agent { label 'amd64' }
             when {
@@ -48728,7 +48747,7 @@ pipeline {
             }
         }
 
-        // Docker - matches docker.yml (ALL branches and tags)
+        // Docker - matches docker.yml (main, version tags and *-beta tags)
         stage('Docker') {
             agent { label 'amd64' }
             steps {
@@ -48742,7 +48761,7 @@ pipeline {
                         tags += " -t ${REGISTRY}:latest"
                         tags += " -t ${REGISTRY}:${yymm}"
                     } else if (env.BUILD_TYPE == 'beta') {
-                        // Beta branch - beta
+                        // *-beta tag - beta
                         tags += " -t ${REGISTRY}:beta"
                     }
                     // devel is NOT tagged here - see the dedicated 'Docker Devel' stage below
@@ -48811,7 +48830,7 @@ pipeline {
                         tags += " -t ${REGISTRY}:latest-aio"
                         tags += " -t ${REGISTRY}:${yymm}-aio"
                     } else if (env.BUILD_TYPE == 'beta') {
-                        // Beta branch - beta
+                        // *-beta tag - beta
                         tags += " -t ${REGISTRY}:beta-aio"
                     }
                     // No devel-aio tag - no aio-dev Dockerfile variant exists
@@ -48986,9 +49005,9 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 | Release Type | GitHub Actions | Jenkins |
 |--------------|----------------|---------|
 | Stable | `release.yml` (tag push) | `BUILD_TYPE == 'release'` (tag) |
-| Beta | `beta.yml` (beta branch) | `BUILD_TYPE == 'beta'` (beta branch) |
+| Beta | `beta.yml` (`*-beta` tag) | `BUILD_TYPE == 'beta'` (`*-beta` tag) |
 | Devel | `devel.yml` (schedule + main) | `BUILD_TYPE == 'devel'` (cron + main/master) |
-| Docker | `docker.yml` (all branches) | Docker stage (always runs) |
+| Docker | `docker.yml` (main, version and beta tags) | Docker stage (always runs) |
 | Docker Devel | `docker.yml` `build-devel` job (`main`/`master` + daily schedule) | Docker Devel stage (`main`/`master` only) + `cron('0 4 * * *')` |
 
 ---
@@ -70210,7 +70229,7 @@ make docker
 
 - [ ] `ci.yml` — build, test, lint, coverage, and all security jobs
 - [ ] `release.yml` - Stable releases (tag trigger)
-- [ ] `beta.yml` - Beta releases (branch trigger)
+- [ ] `beta.yml` - Beta releases (`*-beta` tag trigger)
 - [ ] `devel.yml` - Nightly builds (cron + push)
 - [ ] `docker.yml` - Docker image builds (`build-standard` job) + devel image (`build-devel` job, `:devel`, from `docker/Dockerfile.dev`)
 - [ ] `docker-aio.yml` - All-in-one Docker image build (`-aio` tags) — only if the project has an AIO variant

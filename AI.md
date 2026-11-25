@@ -719,7 +719,7 @@ let cache_size = (avail_mem / 10)
 | **VERSION precedence** | CI release = pushed tag with `v` stripped; CI devel = short commit id; CI beta = `YYYYMMDDHHMMSS-beta`; CI never reads `release.txt`; local Makefile builds = `VERSION` env (user override, AI never sets it) > non-empty `release.txt` > devel rule (short commit id, `devel` outside git) |
 | **Generated text is fully expanded** | Release notes, release names and descriptions, asset names and links, labels and any other text a workflow generates MUST contain real values, never a literal `${VAR}`, `${{ … }}` or a spec placeholder such as `{project_name}`. Shell: build a file with an unquoted heredoc or `printf` (a quoted heredoc is only for text that must stay literal). GitHub/Gitea/Forgejo YAML values use `${{ env.X }}`; shell `${X}` is not expanded there. GitLab keywords outside `script:` (`release:` name, description and assets, `artifacts:paths`) expand only `$VAR` / `${VAR}`, never `${VAR:0:7}` or `${VAR#v}`: compute the value in an upstream job and pass it with a dotenv report. Jenkins: Groovy `"…"` strings interpolate, `'…'` strings do not. Any workflow that builds its own notes or description file runs the guard step below before publishing |
 | **RUSTFLAGS** | `-C strip=symbols -C link-arg=-s` (rustc flags only); `--release --target {target}` go on the cargo command line, not in RUSTFLAGS |
-| **Docker builds on EVERY push** | Any branch push triggers Docker image build |
+| **Docker builds on every push to `main`** | A push to `main`/`master` builds the Docker image; version tags and `*-beta` tags build it too. No other branch is ever pushed (branches are local and temporary) |
 | **Docker tags** | Any push to `main` → `{commit_id}`; a `*-beta` tag → adds `beta`; tag → `{version}`, `latest`, `{yymm}`, `{commit_id}`; `devel` is built by the `build-devel` job inside the same `docker.yml` workflow (schedule + push to `main`/`master`, gated by `if:`) — never a separate file |
 | **Workflow permissions** | Default to read-only / least privilege; grant write only to the specific release/publish job that needs it |
 | **Third-party action pinning** | External actions MUST be pinned to a full commit SHA — never float on `@main`, `@master`, or broad tags; verify runtime and maintenance status on every SHA update |
@@ -3754,7 +3754,7 @@ When the specification is unclear:
 | **CLI commands** | `serve`, `migrate`, `--maintenance` - same interface everywhere |
 | **Flag formats** | Short/long flag patterns, output formats |
 | **Makefile structure** | Targets, variables, Docker commands |
-| **Makefile targets** | `dev`, `local`, `build`, `test`, `release`, `docker` (plus the `clean` helper) |
+| **Makefile targets** | `dev`, `local`, `build`, `test`, `release`, `beta`, `docker` (plus the `clean` and `release-check` helpers) |
 | **CI/CD workflows** | GitHub/Gitea/Jenkins pipeline structure |
 | **Directory layout** | `src/`, `docker/`, `binaries/`, etc. |
 | **Config file format** | YAML structure, standard keys |
@@ -6066,6 +6066,8 @@ jobs:
 ```
 
 ### License Verification Script
+
+**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides.
 
 **Include in project repository:**
 
@@ -8637,7 +8639,7 @@ impl CreateResourceRequest {
 | `DATABASE_URL` | First run: the full database connection string, saved to `secrets.yml` (when it carries a credential) or `server.yml`; ignored afterwards ("Connection Strings") |
 | `CACHE_URL` | First run: the full cache connection string (`valkey://`, `redis://`), saved the same way |
 
-**Init-only variables are used ONCE during first run to seed `server.yml` (and `secrets.yml` for a credential), then ignored.** The database and cache connection variables are init-only because the saved connections belong to the node's setup: a node added to a cluster receives the cluster's database and cache connections, not its environment's, and a database migrated from the admin panel must not be reverted by an environment variable at the next start.
+**Init-only variables are used ONCE during first run to seed the file that owns each setting (`server.yml`; `secrets.yml` for a credential; `yaml.d/branding.yml` for `APPLICATION_NAME` and `APPLICATION_TAGLINE`), then ignored.** The database and cache connection variables are init-only because the saved connections belong to the node's setup: a node added to a cluster receives the cluster's database and cache connections, not its environment's, and a database migrated from the admin panel must not be reverted by an environment variable at the next start.
 
 ---
 
@@ -9679,8 +9681,8 @@ server:
         # Size/age limits come from each log's rotate/keep policy (server.logs)
       session_cleanup:
         enabled: true
-        # Hourly
-        schedule: "@hourly"
+        # Every 15 minutes
+        schedule: "*/15 * * * *"
       backup_daily:
         enabled: true
         # Daily: 2:00 AM
@@ -9696,7 +9698,7 @@ server:
         # when 30 days or fewer remain (Let's Encrypt certificates last 90 days)
 
       # Health checks
-      health_check:
+      healthcheck_self:
         enabled: true
         # Every 5 minutes
         schedule: "*/5 * * * *"
@@ -13114,7 +13116,7 @@ CREATE TABLE IF NOT EXISTS scheduler_tasks (
     last_run    INTEGER,
     -- Unix timestamp
     next_run    INTEGER,
-    -- success, failed, running, skipped
+    -- success, failed, running, skipped, interrupted
     last_status TEXT,
     -- Error message if failed
     last_error  TEXT,
@@ -15474,6 +15476,8 @@ impl User {
 ### Canonical Column Renames (names this specification defines)
 
 **When this specification renames one of its own columns to the canonical name (for example the scheduler tables: `task_id` becomes `id`, `task_name` becomes `name`, `ran_at` becomes `started_at`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
+
+**A primary key is never converted by the schema step.** `admins.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` from the first release of a project built on this template, so there is no type to migrate; the schema step never rebuilds a table, which keeps "Never destructive" true. An existing table keeps its key, and code treats `admins.id` as an opaque value it only compares. An installation that predates this template adopts the canonical key through one project-written migration made while adopting the template: a backup first, then one transaction that creates the new table, copies every row with its references remapped, swaps the tables and re-checks the foreign keys (`PRAGMA foreign_key_check`).
 
 ### Remote Database Updates
 
@@ -27311,7 +27315,7 @@ if ('serviceWorker' in navigator) {
 > - **Every `respondWith()` branch ends in a guaranteed `Response`** — a terminal `.catch()` returning a real `Response` (a synthesized 503 offline page for navigations, a 504 for subresources). Never end a chain on `cached || caches.match('/offline…')`: that link can itself miss and resolve `undefined`.
 > - **Only intercept same-origin GET.** Let API calls, cross-origin requests, and non-GET methods fall through untouched — never call `respondWith()` for them.
 > - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached public page, then the synthesized offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
-> - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` (and, for a page, `X-Offline-Cache: public`) is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A `redirected` response handed to a navigation is a network error (blank page).
+> - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` (and, for a page, `X-Offline-Cache: public`) is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A live redirect from the network is returned to the navigation unchanged and the browser follows it; a cached or rebuilt `redirected` response handed to a navigation is a network error (blank page), which is why none is ever cached.
 > - **A user never has to clear cache, cookies or local storage to recover.** Every state the worker or the page can reach after an update must self-heal: bounded waits, a build-stamped cache name, old caches deleted in `activate`, and the update prompt below that always ends in a reload. Telling a user to clear site data is a defect in the template or the app, never a fix.
 > - **The service worker is an enhancement, never a dependency** — the site stays fully usable if it never installs (the No-JS-first rule above).
 
@@ -27705,7 +27709,7 @@ async function subscribeToPush() {
   });
 
   // Send subscription to server
-  await fetch('/api/push/subscribe', {
+  await fetch('/api/{api_version}/users/push/subscriptions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(subscription)
@@ -27766,6 +27770,15 @@ self.addEventListener('notificationclick', event => {
 - Enable/disable push notifications
 - VAPID key generation
 - Test push functionality
+
+**Server-side contract (OPTIONAL: built only when IDEA.md defines a feature that must notify a user while the app is closed).**
+
+| Part | Rule |
+|------|------|
+| Keys | The VAPID key pair is generated at first start once push is enabled; the private key lives in `secrets.yml` (`server.push.vapid_private_key`), the public key is derived from it and served to the page. "Regenerate" in the admin panel replaces the pair and deletes every subscription, so users subscribe again |
+| Storage | Table `push_subscriptions` in `users.db`: `id`, `user_id`, `endpoint` (UNIQUE), `p256dh`, `auth`, `created_at`, `last_used_at` |
+| Routes | `POST /api/{api_version}/users/push/subscriptions` stores the browser's subscription for the signed-in user (an existing `endpoint` is updated, not duplicated); `DELETE /api/{api_version}/users/push/subscriptions` with `{ "endpoint": ... }` removes it. Both are session or Bearer authenticated like every `/users` route, and the browser page is the `push_enabled` toggle in the user's notification settings |
+| Delivery | Sent only by the notification system (PART 17) as the `webpush` channel, only for events the user's `push_enabled` and `push_*` preferences allow; a `404` or `410` from the push service deletes that subscription; a payload never holds more than the summary the notification already carries |
 
 ### Background Sync
 
@@ -28064,7 +28077,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 | 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control — all sections always visible, none collapsed or revealed by a button. A **More preferences** card, outside the form, links every registered preferences page (see "Preferences and Help Hubs"). The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is not part of this page's form): **Save** (submit; applies every changed field, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons and no "Sync", "Export", "Import" or "Show" buttons: sync has its own page. Every other preferences page (`/server/preferences/sync`, `/server/preferences/tokens` where the project has owner tokens, and project pages) is NOT part of this form: each lives on its own page, reached from the More preferences card, and those pages' own forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
 | 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` or `POST /server/preferences/sync` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so every preferences form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
 | 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and the CCPA opt-out toggle (`ccpa_opt_out`, rendered only when `server.privacy.data.sold` is `true`; otherwise absent and never written) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1). The privacy page's own CCPA form is the one other writer of `ccpa_opt_out` (`POST /server/ccpa`), as the cookie banner is the other writer of `cookie_consent` (`POST /server/consent`) |
-| 18 | **Consent gate** | An explicit preference action (Save, Import, an API write) is not itself consent to the Preferences cookie category, and a visitor who has taken no consent action has the category off. `theme`, `lang` and every `{project_name}_pref_{key}` cookie belong to the **Preferences** cookie category, not to the essential one, so import, save and sync set them only on a device whose `cookie_consent` has `preferences: true` (the same per-device consent that is never exported, rule 1). The gate sits in the one shared implementation, after validation and before any cookie is written, for the web routes and the API mirror alike. When the category is not accepted (no `cookie_consent` cookie, or `preferences: false`): nothing is written, `applied` is empty, every valid value is reported in `ignored`, and the API `data` carries `"consent_required": true`. The web route still answers `303` (rules 9 and 16), never a `4xx`, and the redirect carries `consent_required=1` as a query parameter that the landing page reads, never stores, and turns into a notice pointing at the cookie-consent toggle of rule 17. An import link opened on a new device therefore applies nothing until that device's visitor accepts Preferences and opens the link again; the server keeps no pending state. While the cookies are absent the page renders with the defaults (the language detected from `Accept-Language`). **The header toggles are gated too.** The no-JavaScript header theme POST and the language switcher are preference writes like any other: with no consent they write nothing, answer `303` with `consent_required=1` (the notice of rule 17 appears) and the theme or language does not change. Only the JS instant preview (`static/js/theme.js`) may change the `<html>` class for the CURRENT page view, and it stores nothing. **Cookie visibility is one rule for every preference cookie** (`theme`, `lang`, `{project_name}_pref_{key}`): not HttpOnly, because the preview script reads them, and set only after consent; `owner_token` is the one HttpOnly cookie in this family |
+| 18 | **Consent gate** | An explicit preference action (Save, Import, an API write) is not itself consent to the Preferences cookie category, and a visitor who has taken no consent action has the category off. `theme`, `lang` and every `{project_name}_pref_{key}` cookie belong to the **Preferences** cookie category, not to the essential one, so import, save and sync set them only on a device whose `cookie_consent` has `preferences: true` (the same per-device consent that is never exported, rule 1). The gate sits in the one shared implementation, after validation and before any cookie is written, for the web routes and the API mirror alike. When the category is not accepted (no `cookie_consent` cookie, or `preferences: false`): nothing is written, `applied` is empty, every valid value is reported in `ignored`, and the API `data` carries `"consent_required": true`. The web route still answers `303` (rules 9 and 16), never a `4xx`, and the redirect carries `consent_required=1` as a query parameter that the landing page reads, never stores, and turns into a notice pointing at the cookie-consent toggle of rule 17. An import link opened on a new device therefore applies nothing until that device's visitor accepts Preferences and opens the link again; the server keeps no pending state. While the cookies are absent the page renders with the defaults (the language detected from `Accept-Language`). **The header toggles are gated too.** The no-JavaScript header theme POST and the language switcher are preference writes like any other: with no consent they write nothing, answer `303` with `consent_required=1` (the notice of rule 17 appears) and the theme or language does not change. Only the JS instant preview (the theme block of `static/js/app.js`) may change the `<html>` class for the CURRENT page view, and it stores nothing. **Cookie visibility is one rule for every preference cookie** (`theme`, `lang`, `{project_name}_pref_{key}`): not HttpOnly, because the preview script reads them, and set only after consent; `owner_token` is the one HttpOnly cookie in this family |
 
 **Page layout (`/server/preferences`) — one form, one Save, always visible, then the More preferences card:**
 ```
@@ -30850,7 +30863,7 @@ server:
 - The 1200x630 OG variant is exactly that size: the source is scaled to cover it and center-cropped (the one exception to preserving the ratio, because social platforms require it)
 - Generate multiple sizes on upload/fetch
 - Cache scaled versions locally
-- Re-fetch remote URLs every 24 hours (fixed, not configurable: the branding file accepts only the keys in its table)
+- Re-fetch remote URLs every 24 hours (fixed, not configurable: the branding file accepts only the keys in its table). This refresh is the branding code's own fetch, not a scheduler task, so `server.scheduler.tasks` has no entry for it and the scheduler configuration cannot change it
 - Fallback to embedded default if remote URL fails
 
 ### Remote URL Fetching
@@ -47768,14 +47781,11 @@ docker:build-aio:
       IMAGE="${CI_REGISTRY_IMAGE}"
       if [ "${CI_COMMIT_TAG%-beta}" != "$CI_COMMIT_TAG" ]; then
         VERSION="${CI_COMMIT_TAG}"
-        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
+        TAGS="-t ${IMAGE}:beta-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       elif [ -n "$CI_COMMIT_TAG" ]; then
         VERSION="${CI_COMMIT_TAG#v}"
         YYMM=$(date +%y%m)
         TAGS="-t ${IMAGE}:${VERSION}-aio -t ${IMAGE}:latest-aio -t ${IMAGE}:${YYMM}-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
-      elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
-        VERSION="$(date -u +%Y%m%d%H%M%S)-beta"
-        TAGS="-t ${IMAGE}:beta-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       else
         VERSION="${CI_COMMIT_SHA:0:7}"
         TAGS="-t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
@@ -48829,7 +48839,7 @@ pipeline {
             }
         }
 
-        // Docker All-in-One - matches docker.yml build-aio (ALL branches and tags)
+        // Docker All-in-One - matches docker.yml build-aio (main, version tags and *-beta tags)
         // AIO uses same repo with -aio tag suffix: {repo}:{tag}-aio
         stage('Docker AIO') {
             agent { label 'amd64' }
@@ -49030,7 +49040,7 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 
 Before proceeding, confirm you understand:
 - [ ] Docker uses tini as init, Alpine base
-- [ ] Makefile has the six core targets: dev, local, build, test, release, docker (plus the `clean` and `release-check` helpers)
+- [ ] Makefile has the seven core targets: dev, local, build, test, release, beta, docker (plus the `clean` and `release-check` helpers)
 - [ ] Binary naming: NEVER include -musl suffix
 - [ ] All 7 platform builds required (linux/darwin/windows × amd64/arm64, freebsd × amd64)
 - [ ] CLI builds (if src/client/ exists): 8 additional binaries with `-cli` suffix
@@ -58519,7 +58529,7 @@ if env.is_auto_detect_display_mode_gui() {
 | Environment | Banner Type |
 |-------------|-------------|
 | **Terminal** | Console banner (ASCII art, URLs, status) |
-| **DE (has display)** | GUI status window (system tray, clickable URLs) |
+| **DE (has display)** | Console banner (the server binary has no GUI mode, window or tray, PART 7; a desktop session changes nothing) |
 | **Remote (SSH/Mosh)** | Console banner |
 | **Container** | Log output only |
 | **Headless/daemon** | Log to file |
@@ -58595,11 +58605,13 @@ Why CLI needs a setup wizard:
 
 | Environment | Server/Agent | CLI |
 |-------------|--------------|-----|
-| **Local display** | GUI status window | Full GUI app |
+| **Local display** (and `TERM` is not `dumb`) | Console banner (never a window) | Full GUI app |
 | **Terminal** | Console banner | Full TUI app |
 | **Remote (SSH/Mosh)** | Console banner | Full TUI app |
 | **Container** | Log output | Requires flags |
 | **Headless** | Daemon/service | Error |
+
+`TERM=dumb` is an explicit request for plain output and wins over a local display: the CLI binary then runs in CLI mode (PART 7), never GUI or TUI.
 
 ### CLI First-Run Flow
 
@@ -63897,7 +63909,8 @@ server:
             groups: "groups"
           # Username confirmation behavior for new external accounts
           username_resolution:
-            # prompt_on_first_login | prompt_if_conflict | reject_if_conflict
+            # prompt_on_first_login | reject_if_conflict (the confirmation step runs for every new external account in both modes)
+            # prompt_on_first_login suggests a free numeric suffix for a taken name; reject_if_conflict rejects it and asks for another
             mode: prompt_on_first_login
             allow_custom_on_first_login: true
           # Map external groups to Server Admin role
@@ -63954,7 +63967,8 @@ server:
             name: "cn"
             groups: "memberOf"
           username_resolution:
-            # prompt_on_first_login | prompt_if_conflict | reject_if_conflict
+            # prompt_on_first_login | reject_if_conflict (the confirmation step runs for every new external account in both modes)
+            # prompt_on_first_login suggests a free numeric suffix for a taken name; reject_if_conflict rejects it and asks for another
             mode: prompt_on_first_login
             allow_custom_on_first_login: true
           # Map LDAP groups to Server Admin role
@@ -64045,7 +64059,8 @@ server:
             # Attribute carrying group memberships
             groups: "groups"
           username_resolution:
-            # prompt_on_first_login | prompt_if_conflict | reject_if_conflict
+            # prompt_on_first_login | reject_if_conflict (the confirmation step runs for every new external account in both modes)
+            # prompt_on_first_login suggests a free numeric suffix for a taken name; reject_if_conflict rejects it and asks for another
             mode: prompt_on_first_login
             allow_custom_on_first_login: true
           # Map SAML group assertions to Server Admin role
@@ -64087,6 +64102,8 @@ server:
 **OIDC support applies to BOTH regular users and Server Admins.** The difference is role mapping:
 - regular users: created/synced via `auto_register`, `claims_mapping`, and `role_mapping`
 - server admins: granted by `admin_groups`
+
+**Role precedence (OIDC, LDAP and SAML alike).** `admin_groups` and `role_mapping` are independent. A match in `admin_groups` grants the Server Admin account; the account's regular-user role is still resolved from `role_mapping`. When several `role_mapping` roles match, the highest wins in the fixed order `admin`, `moderator`, `user`, and an account with no match gets `user`. Both are re-evaluated at every external login, so a group removed at the provider demotes the account at its next login.
 
 **OIDC logout behavior:**
 - **RP-initiated logout:** when `rp_initiated_logout: true` and the provider publishes an `end_session_endpoint` in discovery, local logout ends the local session AND redirects to the IdP end-session endpoint (with `id_token_hint` + `post_logout_redirect_uri`) so the IdP session is also ended. If the provider lacks the endpoint, only the local session is ended and this is noted in the `oidc.logout` audit event.
@@ -64246,7 +64263,7 @@ server:
 
 ### OIDC/LDAP/SAML Username Resolution for Regular Users
 
-**Regular-user OIDC/LDAP/SAML login MUST support a first-login username confirmation step for every new external account, not only conflict cases.** SAML reuses this exact flow: the mapped username attribute is the initial candidate, and the persistent NameID (or the documented stable attribute when NameID is transient) becomes `external_id`.
+**Regular-user OIDC/LDAP/SAML login MUST support a first-login username confirmation step for every new external account, not only conflict cases.** `username_resolution.mode` never skips the step: `prompt_on_first_login` (default) suggests the next free numeric suffix for a taken name, `reject_if_conflict` rejects a taken name and asks for another, and no mode creates an external account without the step. SAML reuses this exact flow: the mapped username attribute is the initial candidate, and the persistent NameID (or the documented stable attribute when NameID is transient) becomes `external_id`.
 
 | Scenario | Required Behavior |
 |----------|-------------------|
@@ -65055,6 +65072,8 @@ PATCH /api/{api_version}/users/settings
 
 **API login.** `POST /api/{api_version}/server/auth/login` sets no cookie. A successful login returns `data.token`, a Bearer API token (`adm_` for a Server Admin, `usr_` for a Regular User) named `login`, with the account's own scope and a 24-hour expiry, revocable like any token; scripts and tests send it as `Authorization: Bearer`. A login that still needs 2FA returns `data.requires_2fa: true` and `data.partial_token` (the single-use `Partial-session` value, 5 minutes). There is no field called `session_token`.
 
+**2FA at the shared login (one flow for Server Admins and Regular Users).** An account with 2FA enabled (an admin who enrolled TOTP or a passkey, or a user) does not get a session at the password step: the server creates a `Partial-session` that stores the account type resolved there (`admin` or `user`) and sends the browser to `/server/auth/2fa` (API: `data.requires_2fa` and `data.partial_token`). `POST /server/auth/2fa` and `POST /api/{api_version}/server/auth/2fa` take the partial token and the code; success consumes the partial session and issues the full session of that account type (cookie `admin_session` or `user_session`; API: `data.token`, `adm_` or `usr_`). `/server/auth/recovery/use` consumes a partial session the same way with a recovery key, issues the full session, returns `remaining_keys`, and sends the account to its own security page to re-enroll. A wrong code never reveals the account type and counts as a failed login attempt. An admin with no 2FA enrolled skips the step; enrolling is optional and happens after login on the profile security routes.
+
 **All one-shot tokens (`Reset`, `Verify`, `Invite`, `Tracking`, `Partial-session`) share the same construction:**
 - Generated from `rand::rngs::OsRng` (32 bytes → URL-safe base64 via the `base64` crate).
 - Stored ONLY as `SHA-256(token)` in DB. Plaintext exists in transit (URL/email) and in operator-side ephemeral state only.
@@ -65647,7 +65666,7 @@ Organizations - only for projects with multi-user collaboration.
 2. Client opens `redirect_url` in the system browser; the user authenticates at the provider.
 3. The provider redirects the browser to `/server/auth/oidc/{provider}/callback`. The server matches `state` to the transaction, exchanges the authorization code with the held `code_verifier`, validates the ID token (`nonce`, issuer, audience), resolves the identity and applies the mapping rules. If a first-login username confirmation is required, the browser completes `/server/auth/external/username` first. Only once the account exists does the server mint a one-time `code` stored on the transaction. The browser shows a "you may return to the app" page (and, where supported, a deep link carrying the `code`).
 4. Client calls `POST /api/{api_version}/server/auth/oidc/{provider}/callback` with `{ request_id }` (and the `code` if it captured the deep link). It returns `202 pending` until step 3 has completed, then `200` with the session token (or the 2FA challenge, matching the login response shape).
-5. The transaction, `state` and `code` are single-use, bound to the originating client and expire after 5 minutes by default; a replayed or mismatched `request_id`, `state` or `code` returns `400 INVALID_REQUEST` and ends the transaction.
+5. `request_id` is a 256-bit random secret returned only to the client that began the login, so holding it is the binding: the exchange requires it, and the `code` (when the client captured a deep link) is an additional proof, never a substitute; with no deep link the client simply polls with `request_id`. The transaction, `state` and `code` are single-use and expire after 5 minutes by default; a replayed or mismatched `request_id`, `state` or `code` returns `400 INVALID_REQUEST` and ends the transaction.
 
 **SAML API-mode (native/JSON client) flow:** SAML is inherently a browser redirect + POST-binding protocol, so a native client cannot receive the assertion directly. The API flow bridges this the same way it does for OIDC (get URL → exchange), but the exchange is decoupled because the assertion lands in the browser, not the client:
 

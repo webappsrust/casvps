@@ -811,6 +811,7 @@ Renovate covers `github-actions` SHA updates automatically via `pinDigests: true
 - The default branch MUST be protected against force-push and deletion
 - Changes reach it through `gitcommit` pushes; the build, test and security checks run on every push, and a red run is fixed at once
 - Bot branches (dependabot, renovate) are the only other remote branches, and they are merged or closed, never left open
+- Pull requests come only from forks (external contributors, whose branch lives in the fork) and from those bot branches; maintainers and AI push to `main` and open no pull request
 
 ### Post-Push CI Verification
 
@@ -6069,7 +6070,7 @@ jobs:
 
 ### License Verification Script
 
-**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides. The scanner reads only the first two fields; everything after them is the reviewer note (free text: who read which file, and when), which stays in the committed file as the review record, and a line starting with `#` is a comment. A module whose archive has NO LICENSE file gives a person nothing to read, so it is never overridden on a guess: either its repository states the license in another file (README, COPYING, NOTICE), which the note then names and the SPDX id is recorded the same way, or the license cannot be established and the dependency is replaced or removed.
+**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides. The scanner reads only the first two fields; everything after them is the reviewer note (free text: who read which file, and when), which stays in the committed file as the review record (the maintainer's handle who read the file, and the date; an AI is never named as reviewer, and an AI-assisted review is recorded as the maintainer's own), and a line starting with `#` is a comment. A module whose archive has NO LICENSE file gives a person nothing to read, so it is never overridden on a guess: either its repository states the license in another file (README, COPYING, NOTICE), which the note then names and the SPDX id is recorded the same way, or the license cannot be established and the dependency is replaced or removed.
 
 **Include in project repository:**
 
@@ -11682,7 +11683,7 @@ PHASE 5: Server startup (actual server start)
    a. Check/create system user:
       ├─ User {project_name} exists → use it
       └─ User missing → create {internal_name}:{internal_name} (see PART 24)
-      The service identity is fixed to `{internal_name}:{internal_name}`: no config key selects another user or group, so the early peek never reads one.
+      The service identity is fixed to `{internal_name}:{internal_name}` (when `{internal_name}` holds uppercase, the ACCOUNT and GROUP names are its lowercase form, for example `wordList` gives `wordlist`, because standard account tools reject mixed case; every path keeps the original spelling, and wherever this spec writes `{internal_name}:{internal_name}` as an account, read the lowercase form): no config key selects another user or group, so the early peek never reads one.
       The account's home directory is `{data_dir}`, and the account is created WITHOUT creating that directory (`useradd --no-create-home`, `pw useradd` without `-m`): step 8b creates every directory and step 8c chowns it, so the order account, directories, ownership never depends on a home directory that exists already.
    b. Create ALL directories (while still root):
       ├─ {config_dir}/ and subdirs (ssl/, tor/)
@@ -19718,7 +19719,7 @@ server:
 
 Rate limiting is the primary abuse defense. It is always on: there is no `enabled` setting, and the numbers below are its tunables. Anonymous requests are limited per IP; requests carrying a valid Bearer token (REST and MCP alike) are limited per token, so clients that share an egress IP (hosted assistants, NAT) never throttle one another, and failed authentication is always counted per IP. Counters use a sliding window held in memory and flushed to `server.db` (PART 10 → "Hot counters": every 30 s and on shutdown) and reloaded at start, so a restart keeps them and a crash loses at most the last 30 s. With `valkey` or `redis` the external cache is the authoritative backend (PART 12 caching).
 
-**Counter backend unavailable.** Rate limiting never fails open. When the external cache is unreachable the counters fall back to the in-process memory counter (per instance, started empty, enforcing the same limits), one `warn` is logged and the cache health check reports `degraded`. The failed-authentication lockout and the strict token actions keep their limits through the fallback, so an unavailable cache never lifts a lockout; the in-memory counters, seeded from the last `server.db` flush, take over while the cache is unreachable, and the counters never reset on a process restart.
+**Counter backend unavailable.** Rate limiting never fails open. When the external cache is unreachable the counters fall back to the in-process memory counter (per instance, loaded from the last `server.db` flush, enforcing the same limits), one `warn` is logged and the cache health check reports `degraded`. The failed-authentication lockout and the strict token actions keep their limits through the fallback, so an unavailable cache never lifts a lockout; the in-memory counters, seeded from the last `server.db` flush, take over while the cache is unreachable, and the counters never reset on a process restart.
 
 ```yaml
 server:
@@ -23355,7 +23356,7 @@ fn render_no_js_html(data: &PageData) -> String {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the `/debug/*` routes, `/metrics`, the root aliases, optional well-known files) carries `x-mounted-when` naming its condition (for example `--debug` or `server.metrics.root.enabled`). At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a Markdown table row whose first cell is exactly one backticked path starting with `/` and whose second cell is exactly one HTTP method (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`); a first cell with an alias lists each path as its own route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a Markdown table row whose first cell is exactly one backticked path starting with `/` and whose second cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a first cell with an alias lists each path as its own route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -33744,7 +33745,7 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 **Step 1: Create Admin Account**
 | Field | Default | Notes |
 |-------|---------|-------|
-| Username | `administrator` | Changeable (username blocklist does NOT apply to admin) |
+| Username | `steward` | Changeable. The additional username blocklist does not apply to admins, but the reserved-names list does: `administrator` is reserved, so it is never the default and never an accepted value |
 | Password | Random (generated) | User MUST copy, OR can enter custom + confirm |
 
 **Step 2: API Token**
@@ -33860,7 +33861,7 @@ Admin clicks "Invite New Admin"
 **Invite Rules:**
 - Invite link is single-use by default (`max_uses` = 1, invalidated after first use or expiry); admin may raise `max_uses` (0 = unlimited)
 - Default expiry: 7 days (configurable: 1h, 6h, 24h, 48h, 7d)
-- New admin can set their own username (username blocklist ignored for admins)
+- New admin can set their own username (the additional username blocklist is ignored for admins; the reserved-names list is not)
 - New admin sets their own password and optional 2FA
 - API token generated and shown once
 - Invite creation logged to audit log
@@ -39326,7 +39327,7 @@ groups:
 {
   "version": "1.0.0",
   "created_at": "2025-01-15T10:30:00Z",
-  "created_by": "administrator",
+  "created_by": "steward",
   "app_version": "1.2.3",
   "contents": [
     "server.yml",
@@ -44578,13 +44579,13 @@ networks:
 
 **CI/CD workflows MUST:**
 - Use explicit `cargo build --release --target x86_64-unknown-linux-musl` commands with all flags visible
-- Use CI-native caching (NOT local host paths)
+- Never use local host paths for caches; a provider-native cache (`actions/cache` on GitHub, Gitea and Forgejo, `cache:` on GitLab) is optional, and no template workflow is required to define one
 - Set VERSION, COMMIT_ID, BUILD_EPOCH explicitly via environment variables passed to the build (BUILD_DATE is derived from BUILD_EPOCH at runtime, not passed to cargo build)
 - Build all platforms in matrix: the Release, Beta and Devel workflows build every target; the CI workflow's `build` job is a compile gate for the container's own platform
 - Auto-cancel older in-progress runs for the same ref on push workflows targeting `main`
 
 **CI/CD workflows MUST NOT:**
-- Reference local user paths like `~/.cargo` (use `/tmp/` or CI-native caching)
+- Reference local user paths like `~/.cargo` (use `/tmp/`, or a provider-native cache)
 - Use Makefile targets (commands must be explicit for visibility)
 - Depend on local Docker containers for builds (GitHub/Gitea Actions use native Rust)
 - Cross-cancel different release refs - only older runs for the exact same branch/tag ref may be auto-canceled
@@ -44618,11 +44619,11 @@ networks:
 
 **Note:** By default Rust projects have no `build-toolchain.yml` or `docker/Dockerfile.build`. CI jobs use `container: image: casjaysdev/rust:latest` directly — no `ensure-build-image` gate, no toolchain image build step. A genuine custom need is the only exception, and then `Dockerfile.build` MUST be `FROM casjaysdev/rust:latest` with the standard toolchain workflow pattern.
 
-**Branch push auto-cancel policy:** Any workflow triggered by pushes to `main` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `beta.yml`, `devel.yml`, `docker.yml`, and any project-specific branch-push workflow).
+**Branch push auto-cancel policy:** Any workflow triggered by pushes to `main` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `devel.yml`, `docker.yml`, and any project-specific branch-push workflow; `release.yml` and `beta.yml` run on tags and need none).
 
 **Tag release auto-cancel policy:** Tag-only release workflows like `release.yml` MUST also use workflow concurrency, but only per exact tag ref. A newer run for `refs/tags/v1.2.3` should cancel the older `refs/tags/v1.2.3` run. A run for `v1.2.4` must NOT cancel `v1.2.3`.
 
-**Pull requests and merges:** a pull request runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). A beta is a pushed tag `YYYYMMDDHHMMSS-beta` (`make beta`), a stable release is a pushed `v*` tag, and neither is ever a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
+**Pull requests and merges:** a pull request (from a fork or a bot branch, the only kind there is) runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). A beta is a pushed tag `YYYYMMDDHHMMSS-beta` (`make beta`), a stable release is a pushed `v*` tag, and neither is ever a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
 
 ## Build Info Variables
 
@@ -61304,7 +61305,7 @@ impl App {
 
 ### Theme Support
 
-**TUI MUST support themes per PART 16 theme rules. Uses same colors as server frontend.**
+**TUI MUST support themes per PART 16 theme rules. It uses the ANSI `TerminalPalette`, never literal hex colors (see "CLI/TUI Color Mapping").**
 
 ```rust
 // src/client/tui/theme.rs
@@ -63124,7 +63125,7 @@ pub static USERNAME_BLOCKLIST: &[&str] = &[
 - Blocklist is checked case-insensitively
 - Also blocks usernames that contain blocklisted words as substrings for critical terms (admin, root, system, mod, official, verified)
 - The username blocklist MUST cover all reserved public and operational route names that would collide with top-level or server-owned paths
-- Custom blocklist entries can be added via config
+- Custom entries are set in `server.users.username_blocklist_extra` (a list of strings, in `server.yml` or the users area drop-in and in the admin panel's Users settings). They EXTEND the built-in list and never replace it, are normalized like every name (trim, lowercase, NFKC), and never touch the reserved-names list, which is not configurable
 
 ### Username & Email Rules
 
@@ -66803,8 +66804,8 @@ async fn update_heartbeat(pool: &PgPool, node_id: &str) {
 
 | Last Heartbeat | Status |
 |----------------|--------|
-| < 1 minute ago | online |
-| 1-5 minutes ago | degraded |
+| < 90 seconds ago | healthy |
+| 90 seconds to 5 minutes ago | degraded |
 | > 5 minutes ago | offline |
 
 #### Error Handling
@@ -68184,7 +68185,10 @@ CREATE INDEX IF NOT EXISTS idx_custom_domains_ssl_expires ON custom_domains(ssl_
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS custom_domain_audit (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    domain_id       INTEGER NOT NULL REFERENCES custom_domains(id) ON DELETE CASCADE,
+    -- NULL after the domain is force-deleted: the audit rows are kept, never cascaded away
+    domain_id       INTEGER REFERENCES custom_domains(id) ON DELETE SET NULL,
+    -- snapshot of the domain name taken when the row is written, so a row stays readable after the domain is gone
+    domain_name     TEXT NOT NULL,
     -- created, verified, ssl_issued, suspended, deleted
     action          TEXT NOT NULL,
     -- user, org, admin, system

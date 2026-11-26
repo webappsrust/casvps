@@ -2413,47 +2413,47 @@ server:
 
 **Use `grep -n "^# PART" AI.md` to get exact current line numbers.**
 
-| PART | Line | Topic | When to Read |
-|------|------|-------|--------------|
-| 0 | ~2507 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
-| 1 | ~4384 | Critical Rules | Read before implementing features |
-| 2 | ~5713 | License & Attribution | License requirements |
-| 3 | ~6060 | Project Structure | Setting up new project, **CI/CD badge detection** |
-| 4 | ~7129 | OS-Specific Paths | Path handling |
-| 5 | ~7325 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
-| 6 | ~9375 | Application Modes | Mode handling, debug endpoints |
-| 7 | ~9950 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
-| 8 | ~10539 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
-| 9 | ~14186 | Error Handling & Caching | Error/cache patterns |
-| 10 | ~14738 | Database & Cluster | Database work |
-| 11 | ~15382 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
-| 12 | ~18542 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
-| 13 | ~20228 | Health & Versioning | Health endpoints |
-| 14 | ~21127 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
-| 15 | ~22989 | SSL/TLS & Let's Encrypt | SSL certificates |
-| 16 | ~23966 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
-| 17 | ~31162 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
-| 18 | ~33713 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
-| 19 | ~35094 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
-| 20 | ~35616 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
-| 21 | ~35769 | Metrics | `/server/metrics` + Prometheus/Grafana/Loki services, **INTERNAL only** |
-| 22 | ~37184 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
-| 23 | ~37958 | Update Command | Update feature |
-| 24 | ~38527 | Privilege Escalation & Service | Service/privilege work |
-| 25 | ~39442 | Service Support | Systemd/runit/rc.d/launchd templates |
-| 26 | ~39803 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
-| 27 | ~40661 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
-| 28 | ~42343 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
-| 29 | ~46483 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
-| 30 | ~48568 | ReadTheDocs Documentation | Documentation |
-| 31 | ~49401 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
-| 32 | ~51497 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (**opt-in**) |
-| 33 | ~54658 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
-| 34 | ~59512 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
-| 35 | ~63943 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
-| 36 | ~64672 | Custom Domains | **OPTIONAL** - user/org branded domains |
-| 37 | ~65753 | IDEA.md Reference | **Examples only** - NEVER modify |
-| FINAL | ~65987 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
+| PART | Topic | When to Read |
+|------|-------|--------------|
+| 0 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
+| 1 | Critical Rules | Read before implementing features |
+| 2 | License & Attribution | License requirements |
+| 3 | Project Structure | Setting up new project, **CI/CD badge detection** |
+| 4 | OS-Specific Paths | Path handling |
+| 5 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
+| 6 | Application Modes | Mode handling, debug endpoints |
+| 7 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
+| 8 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
+| 9 | Error Handling & Caching | Error/cache patterns |
+| 10 | Database & Cluster | Database work |
+| 11 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
+| 12 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
+| 13 | Health & Versioning | Health endpoints |
+| 14 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
+| 15 | SSL/TLS & Let's Encrypt | SSL certificates |
+| 16 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
+| 17 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
+| 18 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
+| 19 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
+| 20 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
+| 21 | Metrics | `/server/metrics` + Prometheus/Grafana/Loki services, **INTERNAL only** |
+| 22 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
+| 23 | Update Command | Update feature |
+| 24 | Privilege Escalation & Service | Service/privilege work |
+| 25 | Service Support | Systemd/runit/rc.d/launchd templates |
+| 26 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
+| 27 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
+| 28 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
+| 29 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
+| 30 | ReadTheDocs Documentation | Documentation |
+| 31 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
+| 32 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (**opt-in**) |
+| 33 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
+| 34 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
+| 35 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
+| 36 | Custom Domains | **OPTIONAL** - user/org branded domains |
+| 37 | IDEA.md Reference | **Examples only** - NEVER modify |
+| FINAL | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
 
 **When Implementing OPTIONAL PARTs (34-36, Agent from 33):**
 1. PARTS 34-36: declare the PART in SPEC.md under `## Optional parts` ("SPEC.md — Optional Part Activation"); AI.md is never edited and its marker stays `OPTIONAL`. The Agent binary of PART 33 follows PART 33's own rule
@@ -3898,9 +3898,9 @@ logging:
 |----------|----------|
 | **App needs debian packages** | Use `debian:latest` base image |
 | **App needs specific runtime** | Add to Dockerfile, document in IDEA.md |
-| **App has unique requirements** | Document exception in IDEA.md |
+| **App has unique requirements** | Declare the exception in the project's SPEC.md (it outranks AI.md); IDEA.md only states the product reason and never waives a requirement |
 
-**Rule:** If a spec requirement would genuinely break the app's core functionality, document the exception in IDEA.md.
+**Rule:** If a spec requirement would genuinely break the app's core functionality, declare the exception in SPEC.md (SPEC.md > AI.md) and state the product reason in IDEA.md. IDEA.md alone never waives a requirement.
 
 ## Post-Migration Checklist
 
@@ -4214,7 +4214,7 @@ ls -la docker/
 | 37 | Project-Specific Sections | ✅ Customize for project |
 | FINAL | Compliance Checklist | ✅ Verify all items |
 
-### PART 33: Client & Agent (REQUIRED)
+### PART 33: Client & Agent (CLI REQUIRED, agent optional)
 
 **CLI is REQUIRED for all projects. Agent is OPTIONAL (only for monitoring/remote management projects).**
 
@@ -6357,8 +6357,8 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 │       ├── beta.yml        # Beta releases
 │       ├── devel.yml       # Devel builds
 │       └── docker.yml      # Docker images
-├── CLAUDE.md               # Project memory - critical rules (REQUIRED, primary location)
-├── AGENTS.md               # identical copy of CLAUDE.md, for non-Claude agents
+├── CLAUDE.md               # Short loader that points to AI.md (REQUIRED, primary location)
+├── AGENTS.md               # identical copy of the CLAUDE.md loader, for non-Claude agents
 ├── CLAUDE.local.md         # Personal project preferences (gitignored)
 ├── .claude/                # Claude Code configuration
 │   ├── CLAUDE.md           # Project memory (alternate location)
@@ -7617,7 +7617,8 @@ pub fn safe_resource_path(input: &str) -> Result<String, PathError> {
     if input.len() > 2048 {
         return Err(PathError::TooLong);
     }
-    if input.contains("..") || input.contains('\\') {
+    // Traversal is rejected per segment below: a segment of exactly . or .. fails the file-segment rule (no leading dot); dots inside a name (report..pdf) are legal
+    if input.contains('\\') {
         return Err(PathError::Traversal);
     }
     let mut kept: Vec<&str> = Vec::new();
@@ -8891,7 +8892,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 **Default rule:** server/service processes MUST run as a dedicated system user/group whenever the project supports privilege drop.
 
-**Project-specific exception:** a project may run permanently as root/Administrator only when its core function requires ongoing OS-level privileges and privilege drop would break the app. This exception MUST be explicitly justified in IDEA.md.
+**Project-specific exception:** a project may run permanently as root/Administrator only when its core function requires ongoing OS-level privileges and privilege drop would break the app. This exception MUST be declared in SPEC.md, with the product reason that makes a privilege drop impossible stated in IDEA.md.
 
 ```bash
 # Unix-like (Linux, macOS, FreeBSD)
@@ -8942,7 +8943,7 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 # USER {internal_name}
 
 # WRONG: Hardcode permanent root when the project could run unprivileged
-# and has no documented IDEA.md exception
+# and has no SPEC.md exception
 #
 # WRONG in projects that need privileged startup: prevents privileged port binding
 # USER {internal_name}
@@ -11361,7 +11362,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
 | **PID directory (root)** | `/var/run/{internal_org}/{internal_name}/`, one directory per service, `0755`, owned by `{internal_name}:{internal_name}`, created in the root phase (PART 8 startup step 8b) or by the init script before the start. Never a directory shared between services of one org: a service account can then remove only its own PID file on shutdown and can never touch another service's |
 | **Parent dirs** | Create parent directories as needed (`fs::create_dir_all` equivalent) |
-| **Validate writable** | Fail fast if directory is not writable |
+| **Validate writable** | Fail fast if a directory is not writable, EXCEPT `{backup_dir}`: at startup it is warning-only (step 8j logs one error and the server starts), and a backup operation fails closed when it cannot use it (PART 22), writing nothing elsewhere |
 | **Log on create** | Log directory creation at INFO level |
 
 ### Implementation
@@ -15486,7 +15487,7 @@ impl User {
 
 **When this specification renames one of its own columns to the canonical name (for example the scheduler tables: `task_id` becomes `id`, `task_name` becomes `name`, `ran_at` becomes `started_at`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
 
-**A primary key is never converted by the schema step.** `admins.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` from the first release of a project built on this template, so there is no type to migrate; the schema step never rebuilds a table, which keeps "Never destructive" true. An existing table keeps its key, and code treats `admins.id` as an opaque value it only compares. An installation that predates this template adopts the canonical key through one project-written migration made while adopting the template: a backup first, then one transaction that creates the new table, copies every row with its references remapped, swaps the tables and re-checks the foreign keys (`PRAGMA foreign_key_check`).
+**A primary key is never converted by the schema step.** `admins.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` from the first release of a project built on this template, so there is no type to migrate; the schema step never rebuilds a table, which keeps "Never destructive" true. An existing table keeps its key, and code treats `admins.id` as an opaque value it only compares. The ONLY exception to "No migration files" is a one-time adoption step for an installation that predates this template: the adopting project writes it in its own code (never in this template), the maintainer runs it ONCE, by hand, before the first start on the new binary (it is not part of startup, not versioned and never repeated), and it adopts the canonical key like this: a backup first, then one transaction that creates the new table, copies every row with its references remapped, swaps the tables and re-checks the foreign keys (`PRAGMA foreign_key_check`).
 
 ### Remote Database Updates
 
@@ -19602,7 +19603,7 @@ Tor hidden services are always plain `http://` — the `.onion` address is itsel
 | **`Strict-Transport-Security` (HSTS)** | Never sent — HSTS would make the browser refuse the `http://` onion, taking the site offline. |
 | **CSP `upgrade-insecure-requests`** | Omitted from the CSP for Tor responses — it would rewrite same-origin `http://{onion}` references to a nonexistent `https://{onion}`. |
 | **Clearnet HTTPS-only mode** | Never inherited — a clearnet port-443 / HTTPS-only configuration does NOT propagate to the onion; the onion stays `http://` regardless. |
-| **`Secure` cookie flag** | Still set — a `.onion` is a W3C "potentially trustworthy" secure context in Tor Browser, so `Secure` cookies are stored and sent normally; `secure: auto` treats a matched Tor request as a secure context. |
+| **`Secure` cookie flag** | Still set — a `.onion` is a W3C "potentially trustworthy" secure context in Tor Browser, so `Secure` cookies are stored and sent normally; `secure: auto` treats a matched Tor request as a secure context. **I2P differs:** a `.b32.i2p` site is plain HTTP and browsers do NOT treat it as a secure context, so they drop a `Secure` cookie. On a matched I2P request no cookie (session, CSRF, owner token, preference) is set with `Secure`, whatever `secure` says; `HttpOnly`, `SameSite` and the host-only scope stay. |
 | **Canonical / `Location` / absolute links** | Built via `build_url(headers, path)` → `http://{onion_address}`; never `https://`, never the clearnet host. |
 
 These rules apply only to requests detected as Tor requests. Clearnet requests keep full HTTPS enforcement (redirect, HSTS, upgrade-insecure-requests) unchanged.
@@ -19620,7 +19621,7 @@ These are concrete cases of parity-principle point 2 — features that cannot wo
 | **Third-party clearnet embeds** — external CDNs, fonts, scripts, remote images, analytics | Loading a clearnet URL from a `.onion` page either fails or deanonymizes the user by forcing a non-Tor request. | Serve every asset same-origin from the onion; ship fonts/scripts/images locally; disable third-party analytics for Tor requests. |
 | **Third-party OAuth / SSO login** | Many providers reject `.onion` redirect URIs and will not federate to a hidden service. | Offer local or onion-native auth for Tor; if an external provider is required and unavailable, show a clear "not available over Tor" message — never redirect to a clearnet callback. |
 | **CAPTCHA (reCAPTCHA, hCaptcha) and other clearnet security services** | These are clearnet endpoints; calling them from a `.onion` leaks the request off Tor and usually fails. | Use a self-hosted / Tor-friendly challenge or a proof-of-work / rate-limit alternative. |
-| **Payment gateways, webhooks, outbound callbacks to clearnet** | The target is a clearnet URL; an onion-origin request to it defeats anonymity or is rejected. | Route through a Tor-aware integration if one exists; otherwise fail loudly and tell the user the action isn't available over Tor. **Exception:** a notification webhook (the contact and security-report copy) is optional, never the action itself: over Tor or I2P it is skipped with one WARN log, and the submission is still accepted and stored, with the same response the caller would get otherwise. |
+| **Payment gateways, webhooks, outbound callbacks to clearnet** | The target is a clearnet URL; an onion-origin request to it defeats anonymity or is rejected. | Route through a Tor-aware integration if one exists; otherwise fail loudly and tell the user the action isn't available over Tor. **Exception:** a notification webhook (the contact and security-report copy) is optional, never the action itself: over Tor or I2P it is skipped with one WARN log, and the submission is still accepted and processed exactly as it would be without the webhook (a security report is stored as PART 11 defines; any other contact message follows its normal email routing), with the same response the caller would get otherwise. The webhook is only an extra copy, never the delivery path and never a storage mechanism. |
 | **Absolute / cross-network links and email links** | A link to the clearnet FQDN pushes the user off Tor and leaks the clearnet identity. | Build every absolute URL (canonical tags, redirects, reset/verification email links) from `tor.onion_address` for Tor requests. |
 
 ### Tor Request Logging & Identity
@@ -39502,7 +39503,7 @@ server:
 ```
 0. Ensure {backup_dir} exists and is writable: EnsureDir (PART 8; it is created again when missing, for example removed or an unmounted external disk; 0755 as root, 0700 as user), then a write probe.
    A failure aborts the run with ONE error naming the path, its owner and mode and the running user (backup.failed); nothing is created elsewhere
-1. Run retention sweep on backup dir (resolved and cached at startup step 7)
+1. Pre-run sweep of the backup dir (resolved and cached at startup step 7): removes ONLY leftovers (partial or unverified files from an earlier failed run) and NEVER a valid backup; retention deletion happens only in step 7, after the new backups verify
 2. Check free space: if free < 2× size of most recent backup, OR disk usage
    > disk_threshold (default 90%), log backup.skipped_disk_full (level=error)
    and abort — do NOT create the backup
@@ -39724,7 +39725,7 @@ Note: A single backup can satisfy multiple retention types (e.g., Jan 1st 2025
 on a Sunday counts as daily + weekly + monthly + yearly — uses highest priority)
 ```
 
-**Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced. A full backup that is the `base_backup` of a retained incremental is exempt from pruning until that incremental is replaced (at most one extra full on disk).
+**Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced. A full backup that is the `base_backup` of a retained incremental is exempt from pruning until that incremental is replaced (at most one extra full on disk). Lifetime: the next run replaces the incremental with one based on the newest full; from then on the former base is a plain full, restorable alone at its own snapshot, and it ages out by the normal retention rules. Only the newest incremental and its base form a point-in-time pair, there is never a second incremental on disk, and the fixed file name `{project_name}-daily.tar.gz[.enc]` names no pair (its manifest's `base_backup` does).
 
 ### Cluster Backup Rules
 
@@ -41315,9 +41316,9 @@ adduser -S -D -H -u {id} -G {internal_name} -h /var/lib/{internal_org}/{internal
 
 **Default rule:** create and use a dedicated service user/group.
 
-**Exception:** skip dedicated user creation only when the project is explicitly approved to run permanently as root/Administrator in IDEA.md.
+**Exception:** skip dedicated user creation only when the project is explicitly approved to run permanently as root/Administrator in SPEC.md (the product reason is stated in IDEA.md).
 
-**Exception:** skip dedicated user creation only when the project is explicitly approved to run permanently as root/Administrator in IDEA.md.
+**Exception:** skip dedicated user creation only when the project is explicitly approved to run permanently as root/Administrator in SPEC.md (the product reason is stated in IDEA.md).
 
 ### macOS Service Account
 
@@ -41606,7 +41607,7 @@ fn install_windows_service() -> Result<()> {
 
 This allows any port configuration without service file changes.
 
-**Exception:** if IDEA.md explicitly requires permanent root, the service file and documentation MUST say so and explain why privilege drop is not possible.
+**Exception:** if the project's SPEC.md declares permanent root (the product reason is stated in IDEA.md), the service file and documentation MUST say so and explain why privilege drop is not possible.
 
 ### systemd (Linux)
 
@@ -47396,7 +47397,7 @@ test:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_TAG =~ /-beta$/
+    - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
 
 # =============================================================================
 # RELEASE (GitLab Release)
@@ -47522,7 +47523,7 @@ build:beta:
       dotenv: release.env
     expire_in: 1 week
   rules:
-    - if: $CI_COMMIT_TAG =~ /-beta$/
+    - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
 
 release:beta:
   stage: release
@@ -47577,7 +47578,7 @@ release:beta:
         - name: "sha512.txt"
           url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/sha512.txt?job=release:beta"
   rules:
-    - if: $CI_COMMIT_TAG =~ /-beta$/
+    - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
 
 # =============================================================================
 # DEVEL BUILDS (Scheduled + main/master push) - All 7 platforms
@@ -47773,7 +47774,7 @@ docker:build:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_TAG =~ /-beta$/
+    - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
 
 docker:build-aio:
   stage: docker
@@ -47843,7 +47844,7 @@ docker:build-aio:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_TAG =~ /-beta$/
+    - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
 
 # =============================================================================
 # DOCKER DEVEL BUILD (dedicated job — never folded into docker:build)
@@ -48053,7 +48054,7 @@ pipeline {
             steps {
                 script {
                     // Determine build type and version
-                    if (env.TAG_NAME?.endsWith('-beta')) {
+                    if ((env.TAG_NAME ?: '') ==~ /^\d{14}-beta$/) {
                         // Beta build (tag YYYYMMDDHHMMSS-beta) - matches beta.yml
                         env.BUILD_TYPE = 'beta'
                         env.VERSION = env.TAG_NAME
@@ -49061,7 +49062,7 @@ Before proceeding, confirm you understand:
 | Feature | GitHub Actions | Gitea/Forgejo | GitLab CI | Jenkins |
 |---------|----------------|---------------|-----------|---------|
 | Stable release | `release.yml` | `release.yml` | `rules: tag` | `BUILD_TYPE == 'release'` |
-| Beta release | `beta.yml` | `beta.yml` | `rules: beta` | `BUILD_TYPE == 'beta'` |
+| Beta release | `beta.yml` | `beta.yml` | `rules: if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/` | `BUILD_TYPE == 'beta'` |
 | Devel release | `devel.yml` | `devel.yml` | `rules: schedule` | `BUILD_TYPE == 'devel'` |
 | Docker images | `docker.yml` | `docker.yml` | `docker:build` | Docker stage |
 | Docker devel image | `docker.yml` `build-devel` job | `docker.yml` `build-devel` job | `docker:build-devel` | Docker Devel stage |
@@ -66972,7 +66973,7 @@ When using remote database, the same tables are created but with appropriate typ
 | `last_sync` | Timestamp | Last successful OIDC/LDAP/SAML sync |
 | `created_at` | Timestamp | Account creation |
 | `updated_at` | Timestamp | Last update |
-| `last_login_at` | Timestamp | Last login |
+| `last_login` | Timestamp | Last login |
 
 **Notes:**
 - Multiple admin rows supported — one row per Server Admin
@@ -67010,7 +67011,7 @@ When using remote database, the same tables are created but with appropriate typ
 | `language` | String | User language |
 | `created_at` | Timestamp | Account creation |
 | `updated_at` | Timestamp | Last update |
-| `last_login_at` | Timestamp | Last login |
+| `last_login` | Timestamp | Last login |
 
 #### Tokens Table (tokens)
 

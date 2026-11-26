@@ -29231,19 +29231,27 @@ pub async fn recover_middleware(request: Request, next: Next) -> Response {
 // themed error template itself fails to render, or a panic is recovered
 // here. It MUST NOT depend on the template engine, theme system, or any
 // state that could itself panic or fail — plain strings only.
+// It is the ONE page exempt from the shared page shell and chrome (PART 16 "Same chrome everywhere"):
+// a constant with no header, footer, consent banner or theme, used only when the themed page cannot be
+// rendered. It is still valid HTML: a doctype, a title, one main and one h1, and a link home.
 fn render_fallback_error(status: StatusCode, wants_json: bool) -> Response {
     if wants_json {
         return (
             status,
             [(header::CONTENT_TYPE, "application/json")],
-            format!(r#"{{"error":"{}","status":{}}}"#, status.canonical_reason().unwrap_or(""), status.as_u16()),
+            // the canonical error envelope (PART 14): ok, error code and message; never a status field
+            format!(r#"{{"ok":false,"error":"SERVER_ERROR","message":"{}"}}"#, status.canonical_reason().unwrap_or("")),
         )
             .into_response();
     }
     (
         status,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        format!("<html><body><h1>{} {}</h1></body></html>", status.as_u16(), status.canonical_reason().unwrap_or("")),
+        format!(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{code} {reason}</title></head><body><main><h1>{code} {reason}</h1><p><a href=\"/\">Home</a></p></main></body></html>",
+            code = status.as_u16(),
+            reason = status.canonical_reason().unwrap_or("")
+        ),
     )
         .into_response()
 }
@@ -32101,7 +32109,7 @@ pub fn tracking_script(headers: &HeaderMap, cfg: &Config) -> askama::MarkupDispl
 | **Vendor files** | The tool's libraries (for example React, ReactDOM, GraphiQL, the Swagger UI bundle and its preset) are pinned releases vendored under `static/vendor/{tool}/`, loaded only by their own page, never combined into `app.js` and never edited; the tool's start-up code is one small file, `static/js/docs-{tool}.js`. This is the explicit exception to the one-file, no-framework and no-bundler rules, which govern the project's own JavaScript |
 | **Theme** | The tool follows the project-wide theme through the project's Swagger and GraphiQL theme modules and the shared CSS custom properties; no hardcoded colors |
 | **Without JavaScript** | A `<noscript>` card states that the interactive view needs JavaScript and links to the plain endpoints: the OpenAPI JSON (`/api/{api_version}/server/swagger`) or the GraphQL endpoint (`/api/{api_version}/server/graphql`) |
-| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. A page never adds, removes or reorders header or footer elements |
+| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included (the guaranteed last-resort fallback of the error handler is the one exemption). A page never adds, removes or reorders header or footer elements |
 
 **Shared shell CSS (in `components.css`, tokens only, no pixel literals except the width caps):**
 

@@ -19381,16 +19381,17 @@ use tracing::warn;
 /// Validates all config values, replacing invalid ones with sane defaults.
 /// Never returns an error — invalid fields are warned and corrected in place.
 pub fn validate_config(cfg: &mut Config) {
-    // Port must be 1–65535
-    if cfg.server.port == 0 {
+    // server.port is a string holding one port ("8090") or two ("{http},{https}", "80,443"); a YAML integer is read as its
+    // decimal string. Every number must be 1-65535 and there are at most two (PART 5 "Dual Port Support")
+    if parse_port_spec(&cfg.server.port).is_err() {
         // 64000–64999 range
         let random_port = get_random_available_port();
         warn!(
-            invalid_port = cfg.server.port,
+            invalid_port = %cfg.server.port,
             replacement = random_port,
             "invalid port, using random port"
         );
-        cfg.server.port = random_port;
+        cfg.server.port = random_port.to_string();
     }
 
     // Timeout must be positive

@@ -6069,7 +6069,7 @@ jobs:
 
 ### License Verification Script
 
-**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides.
+**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides. The scanner reads only the first two fields; everything after them is the reviewer note (free text: who read which file, and when), which stays in the committed file as the review record, and a line starting with `#` is a comment. A module whose archive has NO LICENSE file gives a person nothing to read, so it is never overridden on a guess: either its repository states the license in another file (README, COPYING, NOTICE), which the note then names and the SPDX id is recorded the same way, or the license cannot be established and the dependency is replaced or removed.
 
 **Include in project repository:**
 
@@ -47267,6 +47267,19 @@ image-scan:
         - docker/Dockerfile
 
 # =============================================================================
+# BUILD GATE (every main push and merge request: explicit go build, nothing published)
+# =============================================================================
+
+build:check:
+  <<: *rust-build
+  stage: build
+  script:
+    - cargo check --locked --workspace --all-targets
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# =============================================================================
 # RELEASE BUILDS (Tag Push: v* or semver)
 # =============================================================================
 
@@ -65080,7 +65093,7 @@ PATCH /api/{api_version}/users/settings
 | `Bearer` | `Authorization: Bearer adm_…` / `usr_…` / `org_…` (or agent variants) | `tokens` table; SHA-256 hash compared (PART 11 → "API Token Security") | token creation flow |
 | `Reset token` | one-shot URL param (`/server/auth/password/reset?token=…`) | hashed in `password_resets` table; single-use; expires per `auth.password_reset_ttl` (default 1h) | `/server/auth/password/forgot` flow (sent via email) |
 | `Verify token` | one-shot URL param (`/server/auth/verify/{token}`) | hashed in `email_verifications` table; single-use; expires per `auth.email_verify_ttl` (default 48h) | sent via email on registration / email change |
-| `Invite token` | one-shot URL param (`/server/auth/invite/{user|server}/{token}`) | hashed in `invites` table; single-use by default (`max_uses` = 1, 0 = unlimited); expires per `invite_expiration_days` (default 7d) | admin issues from `/server/{admin_path}/admins` (server invite) or user from `/users/orgs/{slug}/invites` (org invite) |
+| `Invite token` | one-shot URL param (`/server/auth/invite/{user|server}/{token}`) | hashed in `invites` table; single-use by default (`max_uses` = 1, 0 = unlimited); expires per `invite_expiration_days` (default 7d) | admin issues from `/server/{admin_path}/admins` (server invite) or user from `/orgs/{slug}/invites` (org invite) |
 | `Tracking token` | one-shot URL param (`/server/security/report/{tracking_id}?token=…`) | per-tracking-id token; single-use-per-day (researcher can refresh by re-clicking the email link); expires 30 days after report closes | sent via email when researcher submits a security report (PART 11 → "Security Reports") |
 | `Partial-session` | short-lived cookie issued mid-flow (post-password-correct, pre-2FA) | `partial_sessions` table; consumed when 2FA / recovery completes; expires per `auth.partial_session_ttl` (default 5m) | `/server/auth/login` flow when 2FA is required |
 

@@ -62847,7 +62847,7 @@ Admin clicks "Invite New User"
 5. Account active after password set
 
 **Invite/activation rules (same as Server Admin invites):**
-- Single-use by default (`max_uses` = 1, invalidated after first use or expiry); admin may raise `max_uses` (0 = unlimited)
+- A user invite or activation link is bound to the ONE username the admin chose and activates exactly that account, so it is ALWAYS single-use (`max_uses` is fixed at 1; invalidated after first use or expiry). Raising `max_uses` (0 = unlimited) exists only for the generic Server Admin invite, where each recipient picks their own username
 - Default expiry: 7 days (configurable: 1h, 6h, 24h, 48h, 7d)
 - Only Server Admin can generate invites or activation links (users cannot invite other users)
 
@@ -65056,7 +65056,7 @@ PATCH /api/{api_version}/users/settings
 
 | Section | Contents |
 |---------|----------|
-| Profile | Email, name, avatar, bio, role (read-only) |
+| Profile | Email (masked, `j***n@e***.com`: an admin never sees a full user email), name, avatar, bio, role (read-only) |
 | Security | 2FA status, sessions |
 | Activity | Login history, API usage |
 | Actions | Disable, delete, impersonate |

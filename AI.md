@@ -113,6 +113,8 @@ AI reads AI.md for the first time
 | `{PROJECT_ORG}` | UPPERCASE | Mutable | `MYORG` |
 | `{internal_name}` | lowercase for a new value (a mixed-case value kept by a migration is the one exception, see the migration rule) | **Stable** at first-time setup | `myapp` |
 | `{INTERNAL_NAME}` | UPPERCASE | **Stable** | `MYAPP` |
+| `{internal_org}` | lowercase | **Stable** at first-time setup | `myorg` |
+| `{INTERNAL_ORG}` | UPPERCASE | **Stable** | `MYORG` |
 | `{plist_name}` | derived | Derived from `{internal_org}` + `{internal_name}` (frozen identifiers, so a rename never changes the launchd label) | `io.github.myorg.myapp` |
 | `{PLATFORM_REPO_URL}` (and the other `{PLATFORM_*}` URL, registry and badge placeholders) | derived | Resolved from the "Platform-Specific URLs" table for the project's platform, with `{org}` = `{project_org}` and `{repo}` = `{project_name}`; not an `IDEA.md` variable, never written by hand | `https://github.com/myorg/myapp` |
 
@@ -273,7 +275,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
    - `## Project variables`
    - `## Business logic`
 3. Normalize discovered variables into lower_snake_case `key: value` entries
-4. If `internal_name` cannot be proven from the existing project state, initialize it to `project_name` on first migration and treat it as stable after that
+4. If `internal_name` / `internal_org` cannot be proven from the existing project state, initialize them to `project_name` / `project_org` on first migration and treat them as stable after that
 5. If statements from `CLAUDE.md` or `.claude/CLAUDE.md` conflict with `AI.md`, `AI.md` wins; either fix the migrated text or ask the user if the intent is unclear
 6. After migration, keep root `CLAUDE.md` and/or `.claude/CLAUDE.md` only as short efficient loaders and keep the real project plan/spec in `IDEA.md`, and mirror the final root `CLAUDE.md` content into `AGENTS.md` as a real file copy (never a symlink)
 7. Never silently discard meaningful project-specific content; migrate it, trim it, or ask the user where it belongs
@@ -426,7 +428,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 ```bash
 # After make dev, debug in Docker with tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${INTERNAL_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   # Required debug tools
   apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
   /app/{project_name} --help
@@ -477,7 +479,7 @@ make dev
 
 # 2. Debug in Docker (with tools)
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${INTERNAL_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
   /app/{project_name} --help
 "
@@ -956,7 +958,7 @@ The `release` job already has `contents: write` to push assets — this covers t
 --status                     # Show status and health (exit 0=healthy, 1=unhealthy)
 --service {start,restart,stop,reload,--install,--uninstall,--disable,--help}
 --daemon                     # Daemonize (detach from terminal)
---maintenance {backup,restore,update,mode,setup,--help} [optional-file-or-setting]
+--maintenance {backup,restore,update,mode,setup,pgp,security,secret,token,data,compliance,scheduler,email,tor,--help} [optional-file-or-setting-or-action]
 --update [check|yes|branch {stable|beta|devel}]
 ```
 
@@ -9478,7 +9480,7 @@ Binary checks:
 | Read/write data | `/var/lib/{internal_org}/{internal_name}/` |
 | Read/write cache | `/var/cache/{internal_org}/{internal_name}/` |
 | Read/write logs | `/var/log/{internal_org}/{internal_name}/` |
-| Read/write backups | `/mnt/Backups/{internal_org}/{internal_name}/` |
+| Read/write backups | `/mnt/Backups/{internal_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) |
 | Use bound sockets | Inherited from root before privilege drop |
 | Bind ports >= 1024 | New sockets after privilege drop |
 | Run scheduled tasks | Backup, cleanup, SSL renewal, etc. |
@@ -11303,7 +11305,7 @@ NO_COLOR=1 {project_name} --status | grep -E '✅|❌|⚠️|🚀'
 --color {auto|yes|no}
 # Language for output (default: auto, from LANG env)
 --lang {code}
---maintenance {backup,restore,update,mode,setup,--help} [optional-file-or-setting]
+--maintenance {backup,restore,update,mode,setup,pgp,security,secret,token,data,compliance,scheduler,email,tor,--help} [optional-file-or-setting-or-action]
 # Check/perform updates
 --update [check|yes|branch {stable|beta|devel}|--help]
 # Shell integration
@@ -14180,7 +14182,7 @@ services:
       # Data, logs, databases and backups (read-write); no PID file inside a container
       - data:/data
     ports:
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
 
 volumes:
   config:
@@ -14197,7 +14199,7 @@ services:
     volumes:
       - {project_name}-data:/data
     ports:
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
 
 volumes:
   {project_name}-data:
@@ -14276,7 +14278,7 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 | `{baseurl}` | URL path prefix (auto-detected) | `/` or `/myproject` |
 | `{port}` | Port number (ALWAYS stripped if 80/443) | `8080` or empty |
 | `{address}` | Listen IP address | `203.0.113.50` |
-| `{app_mode}` | Application mode | `production` or `development` |
+| `{app_mode}` | Application mode | `production`, `development`, or `debug` |
 | `{onion_address}` | Tor .onion address (if enabled) | `abc...xyz.onion` |
 | `{i2p_address}` | I2P address (if enabled) | `abc...xyz.b32.i2p` |
 | `{smtp_address}` | SMTP server address (if configured) | `172.17.0.1` |
@@ -15916,6 +15918,7 @@ fn is_busy(err: &anyhow::Error) -> bool {
 | Simple SELECT | 5 seconds | Fast reads |
 | Complex SELECT (JOIN) | 15 seconds | More processing |
 | INSERT/UPDATE/DELETE | 10 seconds | Write operations |
+| Transactions (multi-statement) | 30 seconds | Bounds the whole `BeginTx`...`Commit`/`Rollback` span, not per-statement. On SQLite the `Write` helper's 10-second deadline bounds the whole write transaction instead ("SQLite Concurrency Contract"), so the 30 seconds apply to remote drivers only |
 | Bulk operations | 60 seconds | Large data sets |
 | Migrations | 5 minutes | Schema changes |
 | Reports | 2 minutes | Aggregations |
@@ -23427,7 +23430,7 @@ Both specs automatically in sync with project
 **Implementation:**
 - Use `utoipa` derive macros and doc comments for OpenAPI documentation
 - Generate OpenAPI spec at build time via `utoipa` + `utoipa-swagger-ui`
-- Generate GraphQL schema from same structs using `async-graphql`
+- Code-first: build the GraphQL schema from the same structs (for example graphql-go). Schema-first: keep ONE `src/graphql/schema.graphqls` as the only schema source and generate the Go types and resolver stubs from it (for example gqlgen). A project uses one approach, never both using `async-graphql`
 - Embed generated specs in binary using `rust-embed`
 - Serve at runtime from embedded files
 - All implementation files in `src/swagger/` and `src/graphql/`
@@ -27792,7 +27795,7 @@ self.addEventListener('push', event => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || '{App Name}', options)
+    self.registration.showNotification(data.title || '{app_name}', options)
   );
 });
 
@@ -28244,9 +28247,9 @@ function hideOfflineIndicator() {
 **Complete manifest.json:**
 ```json
 {
-  "name": "{App Name}",
+  "name": "{app_name}",
   "short_name": "{app_name}",
-  "description": "{App description}",
+  "description": "{app_description}",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -28450,7 +28453,7 @@ function showIOSInstallInstructions() {
 
   if (isIOS && !isInStandalone) {
     showModal({
-      title: 'Install {App Name}',
+      title: 'Install {app_name}',
       content: `
         <ol>
           <li>Tap the Share button <img src="/static/icons/ios-share.svg" alt="Share"></li>
@@ -28499,7 +28502,7 @@ async function requestPersistentStorage() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#000000">
-  <meta name="description" content="{App description}">
+  <meta name="description" content="{app_description}">
 
   <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json">
@@ -28514,7 +28517,7 @@ async function requestPersistentStorage() {
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="{app_name}">
 
-  <title>{App Name}</title>
+  <title>{app_name}</title>
   <link rel="stylesheet" href="{{ asset("css/app.css") }}">
 </head>
 <body>
@@ -39179,7 +39182,7 @@ groups:
 
 ```json
 {
-  "title": "{PROJECT_NAME} Metrics",
+  "title": "{project_name} Metrics",
   "panels": [
     {
       "title": "Request Rate",
@@ -39350,7 +39353,7 @@ groups:
 ### Backup Format
 
 - Single `.tar.gz` file (or `.tar.gz.enc` if encrypted)
-- Filename: `{project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc]`
+- Filename: `{project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc]` (manual/timestamped); scheduled daily fulls use `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]`; a full or manual backup never overwrites a file, so a second full on the same date (the new full after a password change) takes the timestamped name; the daily incremental `{project_name}-daily.tar.gz[.enc]` is the one file REPLACED on every run
 - Includes manifest with version info
 - Encrypted if backup password was set during setup
 
@@ -42441,6 +42444,9 @@ release: release-check build
 		--exclude='target' \
 		-czf $(RELDIR)/$(PROJECT_NAME)-$(VERSION)-source.tar.gz .
 
+	# Generate checksums
+	@cd $(RELDIR) && FILES="$$(ls)" && sha256sum $$FILES > sha256.txt && sha512sum $$FILES > sha512.txt
+
 	# Delete existing release/tag if exists
 	# Tag and release name are v{version}; version.txt stays unprefixed (numeric SemVer)
 	@gh release delete v$(VERSION) --yes 2>/dev/null || true
@@ -42522,7 +42528,7 @@ dev:
 		echo "Built: $$BUILD_DIR/$(PROJECT_NAME)" && \
 		if [ -d "src/client" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-cli"; fi && \
 		if [ -d "src/agent" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-agent"; fi && \
-		echo "Test:  docker run --rm --name $(PROJECT_NAME)-$$(tr -dc a-z0-9 </dev/urandom | head -c8) -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECT_NAME) --help"
+		echo "Test:  docker run --rm --name $(PROJECT_NAME)-$$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8) -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECT_NAME) --help"
 
 # =============================================================================
 # CLEAN - Remove build artifacts
@@ -42690,7 +42696,7 @@ All Docker builds mount four host directories to persist Cargo, Rustup, sccache,
 # After make dev, test in Docker with debug tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${INTERNAL_NAME}-*/ 2>/dev/null | head -1)
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
     apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
@@ -43419,7 +43425,7 @@ services:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
     ports:
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
     healthcheck:
       test: ["CMD", "/usr/local/bin/{project_name}", "--status"]
       interval: 10s
@@ -43525,7 +43531,7 @@ services:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
     ports:
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
     healthcheck:
       test: ["CMD", "/usr/local/bin/{project_name}", "--status"]
       interval: 10s
@@ -43656,7 +43662,7 @@ services:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
     ports:
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
     healthcheck:
       test: ["CMD", "/usr/local/bin/{project_name}", "--status"]
       interval: 10s
@@ -44134,7 +44140,8 @@ rm -rf "$TEMP_DIR"
 - Safe cleanup
 
 **NEVER:**
-- Run docker compose in project directory
+- Run `docker-compose.yml` or `docker-compose.dev.yml` as AI — those are human-only
+- Run docker compose in the project directory
 - Run docker compose with `--project-directory` pointing to project root
 - Mount volumes to `{project_root}/volumes/`
 
@@ -44272,7 +44279,7 @@ services:
       # SMTP_PASSWORD: pass
     ports:
       # Production: bound to Docker bridge only (reverse proxy handles external)
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
     volumes:
       # TEMP DIR WORKFLOW: ./volumes/ resolves to $TEMP_DIR/volumes/
       # NEVER run from project directory - always use temp dir workflow
@@ -44449,7 +44456,7 @@ services:
       CACHE_URL: valkey://{project_name}-cache:6379
     ports:
       # Production: bound to Docker bridge only (reverse proxy handles external)
-      - "172.17.0.1:64580:80"
+      - "172.17.0.1:{port}:80"
     volumes:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
@@ -48150,7 +48157,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48171,7 +48178,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48193,7 +48200,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48214,7 +48221,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48236,7 +48243,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48257,7 +48264,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48279,7 +48286,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48309,7 +48316,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48330,7 +48337,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48351,7 +48358,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48372,7 +48379,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48393,7 +48400,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48414,7 +48421,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48435,7 +48442,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48465,7 +48472,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48486,7 +48493,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48507,7 +48514,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48528,7 +48535,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48549,7 +48556,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48570,7 +48577,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48591,7 +48598,7 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                                --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${CARGO_CACHE}:/usr/local/share/cargo \
                                 -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48645,7 +48652,7 @@ pipeline {
             steps {
                 sh '''
                     docker run --rm \
-                        --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                        --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${CARGO_CACHE}:/usr/local/share/cargo \
                         -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48729,7 +48736,7 @@ pipeline {
 
                     # SBOM ships in every channel (cargo-cyclonedx is pre-installed in casjaysdev/rust:latest)
                     docker run --rm \
-                        --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                        --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${CARGO_CACHE}:/usr/local/share/cargo \
                         -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48771,7 +48778,7 @@ pipeline {
 
                     # SBOM ships in every channel (cargo-cyclonedx is pre-installed in casjaysdev/rust:latest)
                     docker run --rm \
-                        --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                        --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${CARGO_CACHE}:/usr/local/share/cargo \
                         -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -48813,7 +48820,7 @@ pipeline {
 
                     # SBOM ships in every channel (cargo-cyclonedx is pre-installed in casjaysdev/rust:latest)
                     docker run --rm \
-                        --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+                        --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${CARGO_CACHE}:/usr/local/share/cargo \
                         -v ${RUSTUP_CACHE}:/usr/local/share/rustup \
@@ -49111,6 +49118,7 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 | Beta | `beta.yml` (`*-beta` tag) | `BUILD_TYPE == 'beta'` (`*-beta` tag) |
 | Devel | `devel.yml` (schedule + main) | `BUILD_TYPE == 'devel'` (cron + main) |
 | Docker | `docker.yml` (main, version and beta tags) | Docker stage (main and tags) |
+| Docker devel | `docker.yml` `build-devel` job (`main` + daily schedule) | "Docker: Devel" stage (`main` only) + 4am cron |
 | Docker Devel | `docker.yml` `build-devel` job (`main` + daily schedule) | Docker Devel stage (`main` only) + `cron('0 4 * * *')` |
 
 ---
@@ -49150,7 +49158,7 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 | Run or test the compiled binary | `docker run --rm -v "$BUILD_DIR:/app" alpine:latest /app/{project_name}` or `./tests/docker.sh` / `./tests/incus.sh` |
 | Test systemd service install/start/stop | `incus exec {instance_name} -- systemctl ...` (Debian container) |
 | Test OpenRC service install/start/stop | `incus exec {instance_name} -- rc-service ...` (Alpine container) |
-| Test firewall integration | `docker run --rm --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" --cap-add=NET_ADMIN ...` |
+| Test firewall integration | `docker run --rm --name "{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
 | Test package install / dependency setup | Inside the build container or test container |
 | Test reboot / service restart behavior | `incus restart {instance_name}` |
@@ -49360,7 +49368,7 @@ rm -rf "$TEST_DIR"
 **Breaking it down:**
 - `/tmp/` or `$TMPDIR` - OS temp directory base
 - `{project_org}/` - Organization directory (cloudops, acmesoft, etc.)
-- `{project_name}-XXXXXX` - Project directory with random suffix
+- `{internal_name}-XXXXXX` - Project directory with random suffix
 
 **Examples of CORRECT paths:**
 - `/tmp/cloudops/echoip-aB3xY9/`
@@ -50056,7 +50064,7 @@ RUSTUP_CACHE="${RUSTUP_CACHE:-$HOME/.rustup}"
 SCCACHE_CACHE="${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target/${PROJECT_NAME}}"
 mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "$SCCACHE_CACHE" "$CARGO_TARGET"
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -50071,7 +50079,7 @@ if command -v incus &>/dev/null; then
   # PREFERRED: Full OS test in Incus (debian + systemd)
   # Use latest Debian stable (currently 13/trixie)
   echo "Testing with Incus (Debian + systemd)..."
-  INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+  INSTANCE="{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)"
   trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
   incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
   incus file push "$BUILD_DIR/{project_name}" ${INSTANCE}/usr/local/bin/
@@ -50083,7 +50091,7 @@ if command -v incus &>/dev/null; then
 else
   # FALLBACK: Quick test in Docker (alpine, no systemd)
   echo "Incus not available, testing with Docker..."
-  docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest \
+  docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v "$BUILD_DIR:/app" alpine:latest \
     /app/{project_name} --help
 fi
 ```
@@ -50168,7 +50176,7 @@ mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 
 # Common docker run for Rust builds
 RUST_DOCKER="docker run --rm \
-  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
+  --name \"${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)\" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -50197,7 +50205,7 @@ fi
 
 echo "Testing in Docker (Alpine)..."
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
     set -e
@@ -50421,7 +50429,7 @@ PROJECT_ORG=$(basename "$(dirname "$PWD")")
 MAKE_BINDIR="${BINDIR:-binaries}"
 INTERNAL_NAME="${INTERNAL_NAME:-$PROJECT_NAME}"
 INTERNAL_ORG="${INTERNAL_ORG:-$PROJECT_ORG}"
-CONTAINER_PREFIX="${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+CONTAINER_PREFIX="${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)"
 CONTAINERS=()
 
 # Incus images, one per init system: systemd uses the latest Debian stable, OpenRC uses the
@@ -50459,7 +50467,7 @@ mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 
 # Common docker run for Rust builds
 RUST_DOCKER="docker run --rm \
-  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
+  --name \"${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)\" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -50936,7 +50944,7 @@ PROJECT_NAME=$(basename "$PWD")
 # The build output directory is the Makefile's BINDIR (default binaries)
 BIN_DIR="${BINDIR:-binaries}"
 make build BINDIR="$BIN_DIR"
-VM_PREFIX="${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+VM_PREFIX="${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)"
 VMS=()
 
 # One image per init system: Incus pulls these itself; libvirt and VirtualBox read VIRT_IMAGE_SYSTEMD and VIRT_IMAGE_OPENRC
@@ -51080,7 +51088,7 @@ fi
 | **Cleanup** | ALWAYS use `trap` for cleanup |
 | **Exit codes** | `0` every check passed, `1` one or more checks failed (run every check, then exit `1` naming the count), `2` usage, `69` the script cannot run here (missing Docker, Incus, hypervisor or `/dev/kvm`; the reason is on stderr). A `curl ... \|\| echo FAILED` that only prints is a spec violation: use `fail` (see "Output Streams & Exit Codes") |
 | **Output** | Clear progress messages with `echo` on stdout; every error, warning and `SKIP:` on stderr (`>&2`) |
-| **Pipes under `pipefail`** | Never end a pipeline in `grep -q`: grep exits at the first match, the producer then receives SIGPIPE, and `pipefail` reports a failure for a healthy result. Use `grep PATTERN >/dev/null` (it reads everything) or capture the output first |
+| **Pipes under `pipefail`** | Never end a pipeline in a consumer that can exit before it has read all its input: `grep -q`, `head`, `head -c`, `sed -n 1p`, `awk '{exit}'`. The producer then receives SIGPIPE (exit 141) and `pipefail` reports a failure for a healthy result. Use `grep PATTERN >/dev/null` (it reads everything), read from a FILE instead of a pipe (`head -c6 /dev/urandom`), or capture the output first. The random 8-character suffix of a container, instance or temp name is `$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)`: a finite producer and consumers that read everything. The form `tr -dc 'a-z0-9' </dev/urandom | head -c8` is forbidden: `head` exits first and `tr` receives SIGPIPE |
 | **Error handling** | `set -eo pipefail` for bash/zsh; `set -e` for POSIX sh |
 | **License** | All shell scripts are WTFPL — `# @@License : WTFPL` in header |
 
@@ -51308,7 +51316,7 @@ mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 
 # Common docker run for Rust commands
 RUST_DOCKER="docker run --rm \
-  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
+  --name \"${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)\" \
   -v $PROJECT_PATH:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -51339,7 +51347,7 @@ $RUST_DOCKER casjaysdev/rust:latest cargo audit
 
 # Interactive shell (for debugging)
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PROJECT_PATH:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -51451,7 +51459,7 @@ mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 
 # Build (with caching)
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -51463,14 +51471,14 @@ mkdir -p binaries
 cp "$CARGO_TARGET"/x86_64-unknown-linux-musl/release/{project_name} binaries/
 
 # Test in Docker (quick) - install tools first
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v $PWD/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
   /app/{project_name} --help
 "
 
 # Test in Incus (full OS with systemd) - PREFERRED
 # Use latest Debian stable (currently 13/trixie)
-INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+INSTANCE="{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)"
 trap 'for i in "$INSTANCE" "${INSTANCE}-openrc"; do incus delete --force "$i" 2>/dev/null || true; done' EXIT INT TERM
 incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
 incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
@@ -51501,7 +51509,7 @@ mkdir -p $TEST_DIR/{config,data,logs}
 
 # Build to binaries/ (with caching)
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -51513,7 +51521,7 @@ mkdir -p binaries
 cp "$CARGO_TARGET"/x86_64-unknown-linux-musl/release/{project_name} binaries/
 
 # Quick test in Docker (install tools first)
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v $PWD/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
   /app/{project_name} --help
   /app/{project_name} --version
@@ -51521,7 +51529,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 
 # Full test with config/data in Docker
 docker run --rm \
-  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+  --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PWD/binaries:/app \
   -v $TEST_DIR:/test \
   alpine:latest /app/{project_name} \
@@ -51549,7 +51557,7 @@ RUSTUP_CACHE="${RUSTUP_CACHE:-$HOME/.rustup}"
 SCCACHE_CACHE="${SCCACHE_CACHE:-$HOME/.cache/sccache}"
 CARGO_TARGET="${CARGO_TARGET:-$HOME/.cache/cargo-target/${PROJECT_NAME}}"
 mkdir -p "$CARGO_CACHE" "$RUSTUP_CACHE" "$SCCACHE_CACHE" "$CARGO_TARGET"
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+docker run --rm --name "${PROJECT_NAME}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" \
   -v $PWD:/app \
   -v $CARGO_CACHE:/usr/local/share/cargo \
   -v $RUSTUP_CACHE:/usr/local/share/rustup \
@@ -51561,7 +51569,7 @@ mkdir -p binaries
 cp "$CARGO_TARGET"/x86_64-unknown-linux-musl/release/{project_name} binaries/
 
 # Launch Incus container (use latest Debian stable)
-INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+INSTANCE="{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)"
 trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
 incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
 
@@ -52254,7 +52262,7 @@ pymdown-extensions>=10.0
 
 ```bash
 # Docker
-docker run --rm --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -p 172.17.0.1:64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
+docker run --rm --name "{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -p 172.17.0.1:64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
 
 # Binary
 ./{project_name}-linux-amd64 --config server.yml
@@ -60210,7 +60218,7 @@ fn save_if_empty(
         return Err(format!("invalid value: {}", new_value));
     }
     if current.is_empty() {
-        // Save to config
+        // Save to config (empty or invalid current is replaced)
         return Ok(new_value.to_string());
     }
     // Use for session, don't save (current preserved)
@@ -69564,7 +69572,8 @@ make docker
 
 **PART 6: Application Modes**
 - [ ] Production mode: Default, optimized, no debug
-- [ ] Development mode: Verbose logging (does NOT enable debug endpoints)
+- [ ] Development mode: Verbose logging, sanitization fully enforced (does NOT enable debug endpoints)
+- [ ] Debug mode: Explicit opt-in only, minimal sanitization, credentials ALWAYS redacted
 - [ ] Mode priority: `--mode` CLI flag > `MODE` env var > default production
 - [ ] Debug priority: `--debug` CLI flag > `DEBUG` env var (truthy) > `MODE=debug` (debug on by default) > default off
 - [ ] `/debug/` tokio-console enabled only by debug flag, never by mode

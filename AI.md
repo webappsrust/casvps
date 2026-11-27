@@ -3352,7 +3352,7 @@ Implemented core server functionality and API.
 | Code patterns | Relevant PARTs | Config, server, API patterns match |
 | Business logic | IDEA.md | Features implemented match what IDEA.md defines |
 | Threat model / abuse model | IDEA.md → `## Business logic` | Trust boundaries, data sensitivity, abuse cases, and security exceptions are documented and code matches them |
-| Well-known namespace | PART 11 / web routes | `/.well-known/**` serves the paths the project implements per the IANA registry and the RFCs, unimplemented paths 404, and optional entries exist only when the corresponding feature is defined |
+| Well-known namespace | PART 11 / web routes | `/.well-known/**` serves the paths the project implements per the IANA registry and the RFCs (the one template exception is `llms.txt`, served there and at `/llms.txt` by the llms.txt convention although no registry entry exists), unimplemented paths 404, and optional entries exist only when the corresponding feature is defined |
 | External identity auth | PART 34 | OIDC, LDAP, and SAML all exist, support multiple providers, expose the documented `/server/auth/*` and `/api/{api_version}/server/auth/*` routes, and are manageable from `/server/{admin_path}/security/auth/*` |
 | External username onboarding | PART 34 | New OIDC/LDAP/SAML-backed users/admins go through the documented first-login username confirmation flow, including prefill normalization and collision-safe numeric suggestions |
 | CLI interface | PART 8 | Flags, commands, help output match spec |
@@ -4698,7 +4698,7 @@ cargo build --release --target x86_64-unknown-linux-musl
   - clearer UI copy and recovery flows
   - progressive disclosure in admin UX
   - better docs/examples
-- AI MUST NOT reduce friction by disabling, loosening, or bypassing:
+- AI MUST NOT reduce friction by disabling, loosening, or bypassing (this limits what the AI changes in a project; the operator-configured trusted-IP allowlist, which skips blocklists, rate limits and lockouts but never authentication, is a product feature and not a violation):
   - authn / authz
   - TLS / secure cookies
   - CSRF / CSP / CORS protections
@@ -6226,7 +6226,7 @@ panic = "unwind"
 
 ## Embedded Datasets and Content (Provenance Before Embedding)
 
-**Any third-party dataset or content a project embeds or ships (word lists, quote or joke collections, place and postal data, images, fonts, icons, translations, GeoIP-style databases) needs documented provenance BEFORE it is embedded.**
+**Any third-party dataset or content a project embeds or ships (word lists, quote or joke collections, place and postal data, images, fonts, icons, translations, GeoIP-style databases) needs documented provenance BEFORE it is embedded, with ONE exclusion: the JSON files under `src/data/**` (`src/data/**.json`) are outside this section entirely. They need no provenance, terms, attribution, third-party notice, `source` key or ask-first decision; the rows below apply to everything else (images, fonts, icons, downloaded databases, translations from outside the project).**
 
 | Required | Rule |
 |----------|------|
@@ -7866,6 +7866,9 @@ pub async fn path_security_middleware(
 | `GET /server/admin//settings` | `/server/{admin_path}/settings` | 200 |
 | `GET //api///v1//users` | `/api/{api_version}/users` | 200 |
 | `GET ///` | `/` | 200 |
+
+Repeated slashes are collapsed BEFORE any trailing-slash redirect, so `///` normalizes straight to `/` (no `//` intermediate redirect).
+
 | `GET /static/../server/admin` | Blocked | 400 |
 | `GET /api/{api_version}/files/..%2F..%2Fetc/passwd` | Blocked | 400 |
 | `GET /server/admin/....//secret` | Blocked | 400 |
@@ -14776,6 +14779,8 @@ pub fn is_valid_ssl_host(host: &str) -> bool {
 - `X-Forwarded-Port` - Standard: "443" or "8080"
 - `X-Real-Port` - nginx alternative
 
+These protocol, host and port headers (`Front-End-Https` and `X-Real-Port` included) are honored only when the TCP peer is in `trusted_proxies` (step 1 of the client-IP table below); from any other peer they are ignored.
+
 **Client IP Detection (for logging, rate limiting, GeoIP):**
 
 Resolution walks the proxy chain from the right (nearest hop first), following RFC 7239 §5.2 and the de-facto `X-Forwarded-For` convention. The leftmost entry is client-controlled and is NEVER trusted on its own.
@@ -16529,7 +16534,7 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 - NEVER returned in any API response — even to admins. The admin panel shows "configured" / "rotated 12 days ago" / fingerprint hashes only.
 - NEVER logged. The Output Sanitization Pipeline (PART 11 → above) treats any field whose name contains `secret`, `key`, `password`, `token` as redacted at the log layer too.
 - Always included in backups (PART 22 → "Backup Contents").
-- Restored verbatim from a backup. Restoring partially (e.g., DB without these secrets) is rejected by the restore flow — the manifest verifies all secrets are present.
+- Restored verbatim from a backup into SQLite (a restore into a remote database applies them only when its `app_secrets` rows are absent and keeps the live ones otherwise, PART 21). Restoring partially (e.g., DB without these secrets) is rejected by the restore flow — the manifest verifies all secrets are present.
 
 ## Security Headers
 
@@ -17242,6 +17247,7 @@ pub fn extract_context_from_path(
 | `/server/auth/password/forgot` | GET/POST | Request password reset email (if SMTP) |
 | `/server/auth/password/reset` | GET/POST | Password reset (if SMTP) |
 | `/server/auth/invite/server/{code}` | GET | Admin invite acceptance |
+| `/server/auth/invite/server/{code}` | POST | Complete the invite from the web form (username and password; CSRF-protected; `303` to the login page) |
 | `/server/auth/oidc/{provider}` | GET | Start OIDC login for user/admin auth |
 | `/server/auth/oidc/{provider}/callback` | GET | Complete OIDC browser login and apply user/admin mapping rules |
 | `/server/auth/ldap` | GET | LDAP provider chooser when one or more LDAP providers are enabled |
@@ -17338,7 +17344,7 @@ Redirect to         │                    │
 
 - `/.well-known/**` is reserved to the server and can NEVER be claimed by users, orgs, vanity routes, or admin path settings
 - Well-known endpoints live only at the root `/.well-known/...` namespace, never under `/server/*` or `/api/*`
-- The authority for what may live here is the IANA "Well-Known URIs" registry and the RFCs themselves, not a list kept in this template: a project MAY implement any registered or RFC-defined `/.well-known/` path, and this template never forbids a standard path. A path the project does not implement MUST return `404 Not Found`. The Support Matrix below lists only what this template itself implements, and is not exhaustive
+- The authority for what may live here is the IANA "Well-Known URIs" registry and the RFCs themselves, not a list kept in this template (with one explicit template exception: `llms.txt` is always served here by the llms.txt convention although no registry entry exists): a project MAY implement any registered or RFC-defined `/.well-known/` path, and this template never forbids a standard path. A path the project does not implement MUST return `404 Not Found`. The Support Matrix below lists only what this template itself implements, and is not exhaustive
 - `GET` and `HEAD` are the default methods for `/.well-known/**`. A standard that requires another method, a credential, a request body or a special response follows the RFC EXACTLY (path, methods, authentication, content types, status codes, headers), declared as a row in "Well-Known Protocol Exceptions"; any other method on that path MUST return `405 Method Not Allowed`
 - No auth, no CSRF token, and no session requirement may be needed to read any `/.well-known/**` resource; only a method with a row in "Well-Known Protocol Exceptions" may require a credential, and then never a session cookie
 - `/.well-known/` itself MUST NOT list a directory index, file browser, or generated listing
@@ -17850,7 +17856,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
 | **Import private key** | Upload an existing `pgp.priv.asc` (e.g., restoring from backup, migrating from another instance). Same sensitive-operation gate. Validates the key's identity matches the project's expected identity (warns on mismatch — admin can override). |
-| **Delete** | Sensitive-operation flow. Deletes both keys, removes `Encryption:` line from security.txt. Stored and in-flight PGP-encrypted report bodies become un-decryptable (retention still purges them on schedule) — admin warned and must type confirmation. |
+| **Delete** | Sensitive-operation flow with typed confirmation: the operator types the exact phrase `DELETE PGP KEY`. Deletes both keys, removes `Encryption:` line from security.txt. Stored and in-flight PGP-encrypted report bodies become un-decryptable (retention still purges them on schedule) — admin warned and must type confirmation. |
 
 **Keypair properties stored in DB (NOT the keys themselves — those are on disk):**
 
@@ -34551,7 +34557,7 @@ Admin clicks "Invite New Admin"
 ├─────────────────────────────────────────────────────────────┤
 │  Username: [                    ]                           │
 │                                                             │
-│  Invite expires in: [24 hours ▼]                            │
+│  Invite expires in: [7 days ▼]                              │
 │                                                             │
 │  [Cancel]  [Generate Invite]                                │
 └─────────────────────────────────────────────────────────────┘
@@ -35151,6 +35157,9 @@ Admin Panel Header:
 | `hard_lock_attempts` | Number | `10` | No | Attempts before hard lock |
 | `hard_lock_duration` | Duration | `1 hour` | No | Hard lock duration |
 | `permanent_lock_attempts` | Number | `15` | No | Attempts before permanent lock |
+| `soft_lock_window` | Duration | `15 min` | No | Rolling window in which failed attempts count toward a soft lock |
+| `hard_lock_window` | Duration | `1 hour` | No | Rolling window for the hard lock |
+| `permanent_lock_window` | Duration | `24 hours` | No | Rolling window for the permanent lock |
 
 #### IP Blocking Section
 
@@ -45036,7 +45045,7 @@ cd "$TEMP_DIR" && docker compose up -d
 
 **Location:** `docker/docker-compose.test.yml`
 
-**For automated testing.** AI's preferred interface is the project's `tests/` directory scripts (PART 28), which do not use this file. This file is run only through the temp-dir copy/run/cleanup sequence below, when a test needs the full compose stack.
+**For automated testing.** AI's preferred interface is the project's `tests/` directory scripts (PART 28), which do not use this file. This file is run only through the temp-dir copy/run/cleanup sequence below, when a test needs the full compose stack; that stack is optional (a project whose verification needs a cache or database sidecar uses it), and the required verification is `tests/docker.sh` and `tests/incus.sh`.
 
 Debug enabled for test visibility. **MUST be copied to temp directory before use - NEVER run from project directory.**
 
@@ -50889,7 +50898,7 @@ fi
 
 **docker.sh and incus.sh MUST:**
 1. Host cache dirs (`CARGO_CACHE`/`RUSTUP_CACHE`/`SCCACHE_CACHE`/`CARGO_TARGET`) provide persistent Rust cache across builds
-2. Build the host-platform debug binaries (the same debug profile as `make build`) using Docker (casjaysdev/rust:latest) in temp directory:
+2. Build the host-platform debug binaries: `tests/docker.sh` builds them directly with the toolchain container (casjaysdev/rust:latest, the same debug profile as `make build`) in the temp directory; `tests/incus.sh` and `tests/virt.sh` call `make build` once (every platform, debug) and use the binary of the host architecture. No test script ever adds a Makefile target:
    - Server (workspace root or `src/`)
    - Client (`src/client/` binary target) if exists
    - Agent (`src/agent/` binary target) if exists
@@ -57393,7 +57402,6 @@ Node: node-abc123
   Hostname: server-1.example.com
 
 Cluster: connected
-  Status: healthy
   Nodes: 3
   Database: postgres://db.example.com/myapp
 
@@ -58822,7 +58830,7 @@ update:
   auto: false
   # CLI is short-lived; checks once per command. No background poll.
   check_interval: per_invocation
-  channel: stable
+  # The CLI follows the channel of the server it talks to (autodiscover serves that channel's cli_versions); there is no CLI-side channel setting
 ```
 
 **Server-side endpoints:**
@@ -60871,7 +60879,7 @@ output:
   pager: auto
   # Suppress non-essential output
   quiet: false
-  # Extra output (same as --verbose)
+  # Extra detail lines (resolved server, request id, elapsed time); config and environment only, there is no --verbose flag
   verbose: false
 
 # TUI preferences (if TUI supported)
@@ -60891,10 +60899,10 @@ logging:
   level: info
   # Log file path (empty = {log_dir}/cli.log)
   file: ""
-  # Max log file size (match server default)
-  max_size: 10MB
-  # Max log files to keep (match server default)
-  max_files: 5
+  # Rotation (the server's default for every non-access log, PART 17)
+  rotate: weekly,50MB
+  # Rotated files to keep (the server's default)
+  keep: none
 
 # Cache
 cache:
@@ -63049,10 +63057,10 @@ logging:
   level: info
   # Log file path (empty = {log_dir}/agent.log)
   file: ""
-  # Max log file size (match server default)
-  max_size: 10MB
-  # Max log files to keep (match server default)
-  max_files: 5
+  # Rotation (the server's default for every non-access log, PART 17)
+  rotate: weekly,50MB
+  # Rotated files to keep (the server's default)
+  keep: none
 
 # Health reporting
 health:
@@ -66389,7 +66397,6 @@ Organizations - only for projects with multi-user collaboration.
 |------|-------------|
 | `/server/{admin_path}/admins` | Server admin accounts |
 | `/server/{admin_path}/admins/invite` | Invite new Server Admin (generates link) |
-| `/server/{admin_path}/admins/{id}` | Admin detail |
 
 ### Admin - Moderation (`/server/{admin_path}/moderation/`)
 
@@ -66678,7 +66685,7 @@ Moderation only - Server Admin does not manage org members/roles.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile` | GET | Get admin profile |
-| `/api/{api_version}/server/{admin_path}/{admin_username}/profile` | PATCH | Update admin profile (username, icon) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile` | PATCH | Update admin profile (`username`) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/password` | POST | Change admin password |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | GET | Get current API token (masked) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | POST | Regenerate API token (returns new token ONCE) |

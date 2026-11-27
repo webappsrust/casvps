@@ -15417,7 +15417,7 @@ pub fn version_purge(request_headers: &axum::http::HeaderMap, response_headers: 
 }
 ```
 
-Called from the HTML middleware only — never on static, API, or `/sw.js` responses.
+Called from the HTML middleware only, and only for a successful (2xx) top-level navigation — never on static, API, `/sw.js`, redirect or error responses (an error response neither sets nor refreshes the cookie).
 
 **The purge MUST NOT be able to hang a page load** (`"storage"` waits on IndexedDB connections held by other open tabs, `"cache"` holds the navigation until the HTTP cache is cleared):
 
@@ -19096,7 +19096,7 @@ pub struct IpBlock {
 |----------|--------|-------------|
 | `/api/{api_version}/server/{admin_path}/security/blocked-ips` | GET | List blocked IPs |
 | `/api/{api_version}/server/{admin_path}/security/blocked-ips` | POST | Manually block IP/CIDR |
-| `/api/{api_version}/server/{admin_path}/security/blocked-ips/{ip}` | GET | Get block details |
+| `/api/{api_version}/server/{admin_path}/security/blocked-ips/{ip}` | GET | Get block details (`{ip}` is an address, or a CIDR written with `_` in place of `/`, for example `192.0.2.0_24`; the POST body carries the plain CIDR) |
 | `/api/{api_version}/server/{admin_path}/security/blocked-ips/{ip}` | DELETE | Unblock IP |
 | `/api/{api_version}/server/{admin_path}/security/blocked-ips/expired` | DELETE | Purge expired blocks from log |
 | `/api/{api_version}/server/{admin_path}/security/allowlist` | GET | List allowlisted IPs/CIDRs (see Allowlist section) |
@@ -19108,8 +19108,8 @@ pub struct IpBlock {
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/{api_version}/server/{admin_path}/security/locked-accounts` | GET | List locked accounts |
-| `/api/{api_version}/server/{admin_path}/security/locked-accounts/{id}` | DELETE | Unlock account |
+| `/api/{api_version}/server/{admin_path}/security/locked-accounts` | GET | List locked accounts (each entry has `kind`, `id`, `locked_until`) |
+| `/api/{api_version}/server/{admin_path}/security/locked-accounts/{kind}/{id}` | DELETE | Unlock an account (`{kind}` is `user` or `admin`; `{id}` is `users.id`, text, or `admins.id`, integer) |
 
 **Security Settings API:**
 
@@ -20106,7 +20106,7 @@ if got.as_bytes().ct_eq(want.as_bytes()).unwrap_u8() == 0 {
 | Role | When triggered | What is sent by email (a webhook of any role carries only the summary below) |
 |------|----------------|--------------|
 | `admin` | Server-internal events: error rate spike, panic, cluster failover, backup failure, cert renewal, security report received (summary only) | Subject + body + severity + a deep-link to `/server/{admin_path}/...`. NEVER includes user content. |
-| `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body if a researcher pubkey or admin pubkey is configured (PART 11 → "GPG Keypair Management"). |
+| `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body to the researcher's pubkey when one is configured (PART 11 → "GPG Keypair Management"); with only an admin pubkey, the status notice to the researcher is plain text and carries only the tracking id and the status word (never report content), because a message encrypted to the admin key would be unreadable to the researcher, and no separate operator copy is sent. |
 | `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and every `abuse` and `dmca` submission of the report form (`/server/contact`) | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 | `general` | Fallback for `abuse`, `dmca` and `privacy` submissions of the report form (`/server/contact`) when the abuse or DPO address is empty | Sender name, sender email, subject, message body. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 
@@ -26678,7 +26678,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | Variant | `.block-variant` for the fixed variants named in the catalog | `.btn-primary`, `.badge-error` |
 | Size | `.block-sm`, `.block-lg`, `.block-xl` (`md` is the default and has no class) | `.btn-lg`, `.input-sm` |
 | State | The native or ARIA state first: `:disabled`, `:checked`, `[aria-current="page"]`, `[aria-expanded="true"]`, `[aria-pressed="true"]`, `[aria-busy="true"]`, `[aria-invalid="true"]`; a state class (`.is-active`, `.is-loading`) only when no attribute exists | `.toggle input:checked + .toggle-track` |
-| Page hook | `.page-{name}` on `<body>` or `<main>`, with no rule of its own in any stylesheet (tests and anchors only) | `.page-preferences` |
+| Page hook | `.page-{name}` on `<body>` or `<main>`, with no styling of its own: `public.css` and `admin.css` may use it only for the documented placement properties ("Page placement"), and tests and anchors use it freely | `.page-preferences` |
 | JavaScript hook | `data-js-{name}` attribute, never a class | `data-js-copy` |
 
 **Never:** an ID selector, a class named for its look (`.red`, `.big-box`), a class named for a spacing size (`.spacing-sm`: `sm` is a SIZE name, spacing helpers are numbered, see Utilities), a one-off class on one page, or a class that only one page uses.
@@ -26727,20 +26727,20 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 |-----------|--------------------|----------|-------|-------------|
 | Button | `.btn` | `-primary`, `-secondary`, `-danger`, `-ghost`, `-icon` (square, icon only, needs `aria-label`), `--block` | `sm`, `lg`, `xl` | `:disabled`, `[aria-busy]`, `[aria-pressed]` |
 | Input, select, textarea | `.input` | none | `sm`, `lg` | `:disabled`, `:read-only`, `[aria-invalid]` |
-| Form group | `.form-group`, `.form-group-label`, `.form-group-help`, `.form-group-error` | none | none | `[aria-invalid]` on the control |
+| Form group | `.form-group`, `.form-group-label`, `.form-group-help`, `.form-group-error` | `--error`, `--success` | none | `[aria-invalid]` on the control |
 | Toggle | `.toggle`, `.toggle-track`, `.toggle-thumb`, `.toggle-label`, `.toggle-help` | none | `sm`, `lg` | `:checked`, `:disabled`, `:focus-visible` |
 | Check and radio | `.check`, `.check-box`, `.check-label` | none | none | `:checked`, `:indeterminate`, `:disabled` |
 | Tile (picker) | `.tile`, `.tile-icon`, `.tile-label` | none | `sm`, `lg`, `xl` | `[aria-checked]`, `:disabled` |
 | Badge | `.badge` | `-ok`, `-warning`, `-error`, `-info`, `-neutral` | `sm`, `lg` | none |
 | Alert | `.alert`, `.alert-title` | `-info`, `-success`, `-warning`, `-error` | none | none |
-| Toast | `.toast`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | none |
+| Toast | `.toast-container`, `.toast`, `.toast-icon`, `.toast-message`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | none |
 | Modal, popover | `.modal`, `.modal-body`, `.modal-actions` on `<dialog>` or `[popover]` | none | none | `[open]`, `:popover-open` |
 | Table | `.table-wrapper`, `.data-table` | none | `sm` | `[aria-sort]` |
 | Navigation | `.nav-links`, `.nav-link`, and the drawer: `.nav-panel`, `.nav-toggle`, `.nav-overlay`, `.nav-checkbox`, `.nav-close` | none | none | `[aria-current]`, `[aria-expanded]` |
 | Header, footer | `.site-header`, `.site-brand`, `.site-header-actions`, `.site-header-link`, `.site-footer`, `.footer-onion`, `.footer-i2p` | none | none | none |
 | Hub list | `.hub-list`, `.hub-item`, `.hub-link`, `.hub-title`, `.hub-desc` | none | none | `:focus-visible` |
 | Info list | `.info-list`, `.info-label`, `.info-value` | none | none | none |
-| Empty state | `.empty-state`, `.empty-state-title` | none | `lg`, `xl` | none |
+| Empty state | `.empty-state`, `.empty-state-icon`, `.empty-state-title`, `.empty-state-message` | none | `lg`, `xl` | none |
 | Site banner | `.site-banner` | `-info`, `-warning`, `-error`, `-success` | none | none |
 | Icon | `.icon` | none | `sm`, `lg`, `xl` | none |
 
@@ -26756,7 +26756,6 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | Code and copy | `.code-block`, `.copy-btn`, `.copy-icon`, `.copy-text`, `.copy-value`, `.long-string`, `.onion-address`, `.i2p-address`, `.monospace-data`, `.ip-address`, `.api-token`, `.hash` | Code block section |
 | Stats and lists | `.stats-grid`, `.feature-list`, `.feature-enabled`, `.feature-disabled`, `.node-list` | Landing and cluster sections |
 | Admin shell | `.topbar`, `.sidebar`, `.admin-footer`, `.dropdown-item`, `.notification-bell`, `.profile-menu`, `.avatar` | Admin panel section |
-| Form feedback | `.field-error` | Form sections |
 | Theme toggle | `.theme-toggle-form`, `.theme-button` | Header and Preferences sections |
 | Skip link | `.skip-link` | Accessibility section |
 
@@ -26769,6 +26768,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 - Third-party theme CSS shown as an illustration (`.md-typeset`, `.swagger-ui`, `.opblock`, `.admonition`, `.graphiql-container`, CodeMirror). Its own palette is mapped from the project tokens; it never adds a second palette.
 - Examples labelled `WRONG`, which exist to show what the lint rejects (for example `.my-export-btn`). They are never copied into a stylesheet.
 - The literal sizes in the CSS examples of this specification are illustrative; the stylesheet writes each as its token (`0.25rem` is `--space-1`, `0.5rem` is `--space-2`, `0.75rem` is `--space-3`, `1rem` is `--space-4`, `4px` is `--radius-sm`, `1px` is `--border-width`), and the lint is the contract, not the example.
+- Vendored third-party stylesheets (`static/vendor/**`, for example `swagger-ui.css`) and the generated `swagger-theme.css` and `graphql-theme.css` are linked only on their own pages and are unlayered: unlayered rules outrank layered ones, so the theme mapping that must win over the vendor file is unlayered too. The CSS lint skips these files and nothing edits them.
 - The `@media print` block and the single `@media (prefers-reduced-motion: reduce)` block may use `!important` to override screen rules, and only there.
 - Component custom properties with a fallback (`--cluster-gap`, `--control-height`, `--grid-min`, `--stack-gap`, `--toast-duration`); they are set by the component, not defined in `:root`.
 
@@ -27805,7 +27805,7 @@ No JS required — the button is a real form submit whose target is the server-c
   <label for="email">Email</label>
   <input type="email" id="email" name="email"
          aria-describedby="email-error" aria-invalid="true">
-  <span id="email-error" class="field-error" role="alert">
+  <span id="email-error" class="form-group-error" role="alert">
     Please enter a valid email address
   </span>
 </div>
@@ -27843,25 +27843,25 @@ textarea:user-invalid {
 }
 
 /* Server-rendered errors (no-JS baseline) use the .error class from the handler */
-.form-group.error input,
-.form-group.error select,
-.form-group.error textarea {
+.form-group--error input,
+.form-group--error select,
+.form-group--error textarea {
   border-color: var(--color-error);
 }
 
-.field-error {
+.form-group-error {
   color: var(--color-error);
   font-size: 0.875rem;
   margin-top: 0.25rem;
   display: block;
 }
 
-.form-group.success input {
+.form-group--success input {
   border-color: var(--color-success);
 }
 ```
 
-**JavaScript's only validation job** is mirroring the browser's `validationMessage` into the inline `.field-error` element (and setting `aria-invalid`); the styling comes from CSS `:user-invalid` and the authoritative check is always server-side.
+**JavaScript's only validation job** is mirroring the browser's `validationMessage` into the inline `.form-group-error` element (and setting `aria-invalid`); the styling comes from CSS `:user-invalid` and the authoritative check is always server-side.
 
 ## Import/Export UI Convention
 
@@ -38300,7 +38300,7 @@ Task activity is logged to log files only — the scheduler NEVER prints to the 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  TASK: Backup                               [Enable/Disable] [Run Now]      │
+│  TASK: Backup                                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Status:      ✓ Enabled                                                    │
@@ -38342,7 +38342,7 @@ Task activity is logged to log files only — the scheduler NEVER prints to the 
 | Schedule | Cron expression or interval |
 | Last Run | Timestamp and duration |
 | Next Run | Scheduled time |
-| Actions | Enable/Disable, Run Now, View History |
+| CLI actions | `enable`, `disable`, `run` and `history` are CLI subcommands; the output shows no controls |
 
 **Backup Tasks:**
 
@@ -45369,6 +45369,8 @@ networks:
 
 **Pull requests and merges:** a pull request (from a fork or a bot branch, the only kind there is) runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). A beta is a pushed tag `YYYYMMDDHHMMSS-beta` (created by the maintainer), a stable release is a pushed `v*` tag, and neither is ever a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
 
+**Markdown-only changes never build.** The branch triggers of `ci.yml`, `devel.yml`, `docker.yml` and `docker-aio.yml` carry `paths-ignore` for `**.md`, `docs/**` and `.claude/**`, so a spec, TODO or README commit starts no run; tag pushes, `workflow_dispatch` and the schedule are never filtered, and a commit that also changes code still builds. GitLab CI and Jenkins have no negated path filter, so the message of a markdown-only commit ends with `[skip ci]`, which GitHub, Gitea, Forgejo and GitLab honor natively and Jenkins honors through the SCM Skip plugin. A project that syncs its spec from a template therefore adds no CI load.
+
 ## Build Info Variables
 
 All workflows MUST set these environment variables:
@@ -45402,8 +45404,18 @@ name: CI
 on:
   push:
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   pull_request:
     branches: [main]
+    # Markdown-only and documentation-only pull requests never build
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -46000,6 +46012,11 @@ on:
   push:
     branches:
       - main
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   workflow_dispatch:
 
 concurrency:
@@ -46253,6 +46270,11 @@ on:
   push:
     # main only: branches are local and temporary, never pushed
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
     tags:
       - 'v*'
       - '*-beta'
@@ -46482,6 +46504,11 @@ on:
   push:
     # main only: branches are local and temporary, never pushed
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
     tags:
       - 'v*'
       - '*-beta'
@@ -46681,8 +46708,18 @@ name: CI
 on:
   push:
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   pull_request:
     branches: [main]
+    # Markdown-only and documentation-only pull requests never build
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -47235,6 +47272,11 @@ on:
   push:
     branches:
       - main
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
   workflow_dispatch:
 
 concurrency:
@@ -47451,6 +47493,11 @@ on:
   push:
     # main only: branches are local and temporary, never pushed
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
     tags:
       - 'v*'
       - '*-beta'
@@ -47699,6 +47746,11 @@ on:
   push:
     # main only: branches are local and temporary, never pushed
     branches: [main]
+    # Markdown-only and documentation-only pushes never build (tag pushes and the schedule are unaffected)
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
     tags:
       - 'v*'
       - '*-beta'
@@ -58359,10 +58411,11 @@ pub async fn monitor_i2p(
 | Empty tunnel definitions | `{config_dir}/i2p/tunnels.conf`, `{config_dir}/i2p/tunnels.d/` | Server creates empty (0600 / 0700) so no other tunnel is ever loaded (Model A) |
 | I2P data directory | `{data_dir}/i2p/` | Server creates with 0700 (Model A) |
 | Destination key | `{data_dir}/i2p/site/site-keys.dat` | App creates with 0600; one line, SAM `PRIV` in I2P base64 (both models) |
+| Public address | `{data_dir}/i2p/site/hostname` | App writes with 0644; ONLY the public `.b32.i2p` address derived from the destination (both models), never private material |
 | i2pd process PID | `{data_dir}/i2p/i2pd.pid` | Model A only |
 | i2pd log file | `{log_dir}/i2pd.log` | Model A only |
 
-**Model B** owns no i2pd files — only `{data_dir}/i2p/site/site-keys.dat` (the persisted destination) is written by the app. Model A additionally owns `i2pd.conf`, `tunnels.conf`/`tunnels.d/` (empty), `i2pd.pid` and `i2pd.log`.
+**Model B** owns no i2pd files — only `{data_dir}/i2p/site/site-keys.dat` (the persisted destination) and the public `{data_dir}/i2p/site/hostname` are written by the app. Model A additionally owns `i2pd.conf`, `tunnels.conf`/`tunnels.d/` (empty), `i2pd.pid` and `i2pd.log`.
 
 #### Runtime Directory Handling
 

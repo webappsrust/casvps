@@ -1,6 +1,6 @@
 ## Project description
 
-CasVPS is a self-hosted virtualization management platform for homelabs and larger server environments. It gives administrators a web interface and API to manage virtual machines, containers, storage, networking, and the hosts that run them. The project aims to make those capabilities manageable from a small ARM-based server through to a multi-node datacenter, with monitoring, backups, security controls, and recovery features included in the same product.
+CasVPS is a Linux-hosted virtualization management platform for homelabs and larger server environments. It gives administrators a web interface and API to manage virtual machines, containers, storage, networking, and the hosts that run them. The project aims to make those capabilities manageable from a small ARM-based Linux server through to a multi-node datacenter, with monitoring, backups, security controls, and recovery features included in the same product.
 
 ## Project variables
 
@@ -8,8 +8,8 @@ project_name: casvps
 project_org: webappsrust
 # STABLE — set at first-time setup; change only on an explicit rename or fork reset
 internal_name: casvps
-# STABLE — original repository identity in project history; preserved across the move to webappsrust
-internal_org: casapps
+# STABLE — canonical organization confirmed by the project maintainer
+internal_org: webappsrust
 app_name: CasVPS
 resource_label: workload
 resource_label_plural: workloads
@@ -37,6 +37,8 @@ The product scope includes:
 - Provide operational support information, event and audit history, and recovery actions that help administrators diagnose and recover from failures.
 
 CasVPS is a virtualization management product. It does not promise that every optional enterprise integration or compliance profile is enabled in every deployment. It does not provide public cloud hosting, a general-purpose application marketplace, or a managed service operated on behalf of customers.
+
+The CasVPS server runs on Linux virtualization hosts only. Windows and macOS are guest operating systems where licensing and platform requirements permit; they are not supported server hosts.
 
 #### Browser pages
 

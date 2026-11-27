@@ -8,11 +8,11 @@ project_name: casvps
 project_org: webappsrust
 # STABLE — set at first-time setup; change only on an explicit rename or fork reset
 internal_name: casvps
-# STABLE — set at first-time setup; change only on an explicit rename or fork reset
-internal_org: webappsrust
+# STABLE — original repository identity in project history; preserved across the move to webappsrust
+internal_org: casapps
 app_name: CasVPS
-resource_label: virtual machine
-resource_label_plural: virtual machines
+resource_label: workload
+resource_label_plural: workloads
 
 ## Business logic
 
@@ -44,16 +44,16 @@ Administrative actions and resource access must be attributable to the responsib
 
 ### Data model & sensitivity
 
-The product manages the following information:
+The product's core entities and relationships are:
 
-- **Hosts and cluster nodes:** identity, availability, capacity, health, and cluster membership.
-- **Virtual machines and containers:** names, guest configuration, lifecycle state, assigned resources, ownership, and placement.
-- **Storage and backups:** pools, volumes, snapshots, backup jobs, restore points, and retention information.
-- **Networks and addresses:** virtual network configuration, subnets, address allocations, and workload associations.
-- **Operating system media and templates:** source, version, architecture, availability, and local inventory.
-- **Monitoring and operations:** metrics, alerts, service status, scheduled work, events, and audit records.
-- **Security and compliance state:** certificates, security findings, policy settings, and compliance results.
-- **Identity and access information:** administrator and resource-user identities, permissions, and credential metadata.
+- **Hosts and cluster nodes:** each node has an identity, availability, capacity, health, and cluster membership. A workload may be placed on a node; a cluster groups nodes and reports their combined resources and status.
+- **Virtual machines and containers:** each workload has a name, type, guest configuration, lifecycle state, assigned resources, owner, and placement. A workload may be associated with storage, networks, images, snapshots, backups, and operational events.
+- **Storage and backups:** pools contain or provide volumes; workloads may use volumes; snapshots belong to workloads; backup jobs select workloads or storage sources and produce restore points with retention information.
+- **Networks and addresses:** virtual networks have network configuration and address ranges; addresses are allocated to workloads or other managed resources.
+- **Operating system media and templates:** each catalog item has a source, version, architecture, availability, and local inventory state; workloads may be created from selected media or templates.
+- **Monitoring and operations:** metrics and service checks describe hosts, nodes, workloads, storage, and networks; alerts refer to monitored conditions; scheduled work, events, and audit records describe operations and their outcomes.
+- **Security and compliance state:** certificates, security findings, policy settings, and compliance results belong to the installation or a managed node.
+- **Identity and access information:** administrator and resource-user identities have roles and permissions; API credentials belong to an identity and may carry scopes and expiry metadata.
 
 Host configuration, network topology, guest inventories, credentials, certificates, and security findings are sensitive operational data. VM and container contents may contain customer or personal data and must be treated as untrusted workload data. Logs and monitoring data can reveal infrastructure details and user activity.
 
@@ -76,46 +76,129 @@ Host configuration, network topology, guest inventories, credentials, certificat
 - Proxmox VE compatibility is a client interoperability goal for the documented API surface; CasVPS-specific capabilities may extend beyond that surface.
 - Security scanners, compliance profiles, and enterprise integrations are product capabilities whose availability and activation may depend on the installation and its configuration.
 
-### Trust boundaries & abuse cases
+### Trust boundaries & external services
 
-- Administrators, resource users, automation clients, and unauthenticated network callers have different trust levels. A caller must not gain higher privileges by changing an object identifier, node name, or request payload.
-- VM and container guests are untrusted and may be malicious. Guest activity must not grant access to the host, the management plane, other workloads, or cluster credentials.
-- Network requests, uploaded media, templates, and imported workload images are untrusted inputs. They may be malformed, oversized, malicious, or crafted to exhaust host resources.
-- Cluster peers and remote backup or image sources cross host and network trust boundaries. A compromised or unreachable peer must not silently authorize administrative changes or corrupt unrelated workload state.
-- Relevant abuse cases include credential theft, unauthorized workload access, privilege escalation, destructive API requests, denial of service through resource exhaustion, malicious guest escape attempts, tampering with backups or audit history, and exposure of sensitive host or network details.
-- The product must make security-relevant administrative and workload actions auditable and must avoid exposing credentials or private key material in user-visible output or operational records.
+- Administrators, resource users, automation clients, unauthenticated network callers, managed guests, and cluster peers are separate trust domains. A caller must not gain more access by changing an object identifier, node name, or request payload.
+- VM and container guests are untrusted, including guests created from operator-supplied or externally sourced media. Guest activity must not grant access to the host, management plane, another workload, or cluster credentials.
+- Network requests, uploaded media, templates, imported images, and data returned by external services are untrusted inputs. They may be malformed, oversized, malicious, stale, or crafted to exhaust host resources.
+- Cluster peers are trusted only as configured members. A compromised or unreachable peer must not silently authorize administrative changes, report false health, or corrupt unrelated workload state.
+- Public ISO and operating-system image sources, update release services, security-data publishers, and remote backup destinations are external dependencies. Their content is not trusted solely because it came from a listed or popular source. An unavailable or invalid source must not be treated as proof that an update, image, backup, or security feed is valid.
+- LDAP, OIDC, and SAML identity providers may be used for enterprise authentication when enabled. They are authoritative only for the identity assertions they provide; their availability or compromise must not grant host-wide rights beyond the CasVPS role and permissions assigned to that identity.
+- Proxmox-compatible clients are external callers and receive only the documented compatibility operations under the permissions granted to their credentials.
+
+### Threat model & abuse cases
+
+**Primary assets:** host and cluster control, guest workloads and their contents, storage volumes and backups, network topology and address allocations, administrator and user identities, API credentials, certificates and private keys, security findings, and audit history.
+
+**Attacker goals:** gain host or cluster control, access or alter another party's workload, steal credentials or guest data, disrupt workload availability, exhaust host capacity, persist through a compromised guest, or conceal destructive activity.
+
+**Relevant threats and required product outcomes:**
+
+- Credential theft, credential stuffing, and token misuse must not let a caller exceed the permissions of the authenticated identity.
+- Object-ID substitution and malformed requests must not cross workload, storage, or tenant boundaries or trigger actions against unrelated resources.
+- Malicious guests must not reach host control or other guests; guest compromise is treated as a possible event, not as proof that the host remains trustworthy.
+- Malicious or oversized uploads, imported images, and API requests must not be allowed to execute as trusted host content or exhaust resources without bounds.
+- Forged, replayed, or malicious cluster messages must not authorize membership or workload changes. Loss of a peer must be visible as degraded or unavailable state rather than healthy state.
+- Tampered, incomplete, or unavailable backup sources must not be represented as verified recovery points. Recovery must make the chosen source and affected workload clear.
+- Unauthorized changes or tampering attempts must not be silently erased from the operational record.
+- External identity, image, update, security-data, and backup services may be unavailable or compromised. Their failures must be visible and must not silently weaken access controls or validate untrusted content.
+
+### Security decisions & exceptions
+
+- CasVPS intentionally manages host-level virtualization, networking, storage, and security functions. This powerful control is the product's purpose and is reserved for server administrators; resource users receive only workload-scoped access.
+- The project intentionally includes a Proxmox VE compatibility API for interoperability. Compatibility is limited to the documented surface; it does not promise complete behavioral parity with Proxmox VE.
+- The product may retrieve operating-system media, update metadata, security data, and backups from external sources because these are part of its management and recovery workflows. Those sources remain untrusted inputs, and their failure must be surfaced rather than silently accepted.
+- Enterprise identity providers are an optional integration. An external identity assertion does not itself grant CasVPS administrative privileges; CasVPS permissions remain authoritative.
+- No security exception authorizes a guest, external service, or compatibility client to bypass CasVPS authorization or access another workload.
 
 ### API routes
 
-The API inventory below describes product operations available to authorized callers. Resource operations require permission for the target resource; host, cluster, security, and administrative operations require server-administrator permission. Exact request and response fields follow the API contract and implementation specification.
+These are the project-defined API operations present in the historical router and product specification. The template's own health, documentation, and server-administration routes are not repeated here. Resource routes require an authenticated caller with permission for the target resource; administrative routes require a server administrator. The request and response summaries describe the product contract at the level established by project history; the implementation specification defines serialization details.
 
-| Method | Path | Access | Purpose |
-|--------|------|--------|---------|
-| GET | /api/{api_version}/vms | Authorized resource user or administrator | List workloads visible to the caller. |
-| POST | /api/{api_version}/vms | Authorized user or administrator | Create a virtual machine. |
-| GET | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Read a virtual machine. |
-| PUT | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Update permitted VM settings. |
-| DELETE | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Delete a virtual machine. |
-| POST | /api/{api_version}/vms/{vm_id}/start | Authorized resource user or administrator | Start a virtual machine. |
-| POST | /api/{api_version}/vms/{vm_id}/stop | Authorized resource user or administrator | Stop a virtual machine. |
-| POST | /api/{api_version}/vms/{vm_id}/restart | Authorized resource user or administrator | Restart a virtual machine. |
-| GET | /api/{api_version}/vms/{vm_id}/status | Authorized resource user or administrator | Read VM lifecycle status. |
-| GET, POST | /api/{api_version}/vms/{vm_id}/snapshots | Authorized resource user or administrator | List or create VM snapshots. |
-| POST | /api/{api_version}/vms/{vm_id}/migrate | Server administrator | Migrate a VM to an eligible node. |
-| GET, POST | /api/{api_version}/containers | Authorized resource user or administrator | List or create containers. |
-| GET, PUT, DELETE | /api/{api_version}/containers/{container_id} | Authorized resource user or administrator | Read, update, or delete a container. |
-| POST | /api/{api_version}/containers/{container_id}/start | Authorized resource user or administrator | Start a container. |
-| POST | /api/{api_version}/containers/{container_id}/stop | Authorized resource user or administrator | Stop a container. |
-| POST | /api/{api_version}/containers/{container_id}/restart | Authorized resource user or administrator | Restart a container. |
-| GET, POST | /api/{api_version}/networks | Server administrator | List or create virtual networks. |
-| GET, PUT, DELETE | /api/{api_version}/networks/{network_id} | Server administrator | Read, update, or delete a virtual network. |
-| GET, POST | /api/{api_version}/storage/pools | Server administrator | List or create storage pools. |
-| GET, DELETE | /api/{api_version}/storage/pools/{pool_id} | Server administrator | Read or remove a storage pool. |
-| GET, POST | /api/{api_version}/storage/volumes | Authorized resource user or administrator | List or create volumes within granted storage. |
-| GET, DELETE | /api/{api_version}/storage/volumes/{volume_id} | Authorized resource user or administrator | Read or remove an authorized volume. |
-| GET, POST | /api/{api_version}/storage/backups | Server administrator | List backups or create a backup operation. |
-| GET | /api/{api_version}/monitoring | Server administrator | Query monitoring data. |
-| GET | /api/{api_version}/monitoring/status | Server administrator | Read system status. |
-| GET | /api/{api_version}/monitoring/nodes/{node_id}/metrics | Server administrator | Read metrics for a cluster node. |
-| GET, POST | /api/{api_version}/monitoring/alerts | Server administrator | List or create monitoring alerts. |
-| GET | /api2/json/* | Authorized API client | Use the documented Proxmox VE compatibility endpoints for nodes, cluster status, and access information. |
+| Method | Path | Auth | Purpose | Request / response summary |
+|--------|------|------|---------|----------------------------|
+| GET | /api/{api_version}/status | Public read | Read application status. | No body; returns running state, version, uptime, and node count. |
+| GET | /api/{api_version}/health | Public read | Read application dependency health. | No body; returns health state and component checks. |
+| GET | /api/{api_version}/openapi.json | Public read | Read the native API description. | No body; returns the OpenAPI document for the native API. |
+| POST | /api/{api_version}/auth/login | Anonymous | Authenticate an account. | Username, password, optional realm; returns access and refresh credentials plus identity summary. |
+| POST | /api/{api_version}/auth/logout | Authenticated bearer | End the caller's authenticated session/token. | Bearer credential; returns a logout result. |
+| POST | /api/{api_version}/auth/refresh | Refresh credential | Renew an access credential. | Refresh credential; returns renewed access credential and identity summary. |
+| GET | /api/{api_version}/auth/tokens | Authenticated account | List the caller's API tokens. | No body; returns token metadata, scopes, expiry, and active state. |
+| POST | /api/{api_version}/auth/tokens | Authenticated account | Create an API token for the caller. | Name, scopes, optional expiry; returns the new token once and its metadata. |
+| DELETE | /api/{api_version}/auth/tokens/{token_id} | Authenticated account | Revoke one of the caller's API tokens. | Token ID; returns revocation result. |
+| GET | /api/{api_version}/auth/me | Authenticated bearer | Read the caller's identity summary. | No body; returns account ID, username, role, and optional email. |
+| GET | /api/{api_version}/admin/system/status | Server administrator | Read host and workload summary. | No body; returns version, uptime, node/workload counts, resource use, and network state. |
+| GET | /api/{api_version}/admin/system/config | Server administrator | Read system settings. | No body; returns current system settings. |
+| PUT | /api/{api_version}/admin/system/config | Server administrator | Change system settings. | Settings document; returns the resulting settings or operation result. |
+| GET | /api/{api_version}/admin/users | Server administrator | List managed accounts. | No body; returns account identity, role, enabled state, and creation time. |
+| POST | /api/{api_version}/admin/users | Server administrator | Create a managed account. | Username, optional email, role, and initial credential; returns account summary. |
+| GET | /api/{api_version}/admin/users/{user_id} | Server administrator | Read an account. | User ID; returns account summary. |
+| PUT | /api/{api_version}/admin/users/{user_id} | Server administrator | Change account settings or permissions. | User ID and changed account fields; returns updated account summary. |
+| DELETE | /api/{api_version}/admin/users/{user_id} | Server administrator | Remove an account. | User ID; returns operation result. |
+| GET | /api/{api_version}/admin/nodes | Server administrator | List cluster nodes. | No body; returns node identity, address, role, health, and join time. |
+| DELETE | /api/{api_version}/admin/nodes/{node_id} | Server administrator | Remove a cluster node. | Node ID; returns operation result. |
+| GET | /api/{api_version}/admin/tokens | Server administrator | List managed API tokens. | No body; returns token owner, scopes, creation, and expiry metadata. |
+| POST | /api/{api_version}/admin/tokens | Server administrator | Create an API token. | Name, scopes, optional lifetime; returns token and metadata. |
+| DELETE | /api/{api_version}/admin/tokens/{token_id} | Server administrator | Revoke an API token. | Token ID; returns operation result. |
+| GET | /api/{api_version}/admin/certificates | Server administrator | List managed certificates. | No body; returns certificate identity, type, expiry, and renewal state. |
+| POST | /api/{api_version}/admin/certificates | Server administrator | Request or register a certificate. | Domain, certificate type, renewal preference; returns certificate summary. |
+| DELETE | /api/{api_version}/admin/certificates/{cert_id} | Server administrator | Remove a managed certificate. | Certificate ID; returns operation result. |
+| GET | /api/{api_version}/admin/backup-jobs | Server administrator | List scheduled backup jobs. | No body; returns job name, schedule, source, destination, and enabled state. |
+| POST | /api/{api_version}/admin/backup-jobs | Server administrator | Create a scheduled backup job. | Name, schedule, source type and ID, destination; returns job summary. |
+| PUT | /api/{api_version}/admin/backup-jobs/{job_id} | Server administrator | Update a scheduled backup job. | Job ID and changed job fields; returns updated job summary. |
+| DELETE | /api/{api_version}/admin/backup-jobs/{job_id} | Server administrator | Delete a scheduled backup job. | Job ID; returns operation result. |
+| GET | /api/{api_version}/admin/compliance | Server administrator | Read compliance profile state. | No body; returns profile status and enabled state. |
+| PUT | /api/{api_version}/admin/compliance/{type} | Server administrator | Change a compliance profile. | Profile type and settings; returns resulting profile state. |
+| GET | /api/{api_version}/admin/audit-logs | Server administrator | Search administrative audit history. | Optional time range, user, action, and result limit; returns matching audit events. |
+| GET | /api/{api_version}/admin/security/events | Server administrator | Review security events. | No body; returns security event summaries. |
+| GET | /api/{api_version}/vms | Authorized resource user or administrator | List visible virtual machines. | Optional filters; returns VM identity, state, allocation, placement, and creation time. |
+| POST | /api/{api_version}/vms | Authorized user or administrator | Create a virtual machine. | Name, memory, CPU count, disk size, and OS type; returns VM summary. |
+| GET | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Read a virtual machine. | VM ID; returns VM configuration and status. |
+| PUT | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Update permitted VM settings. | VM ID and changed settings; returns updated VM summary. |
+| DELETE | /api/{api_version}/vms/{vm_id} | Authorized resource user or administrator | Delete a virtual machine. | VM ID; returns operation result. |
+| POST | /api/{api_version}/vms/{vm_id}/start | Authorized resource user or administrator | Start a virtual machine. | VM ID; returns operation result and resulting state. |
+| POST | /api/{api_version}/vms/{vm_id}/stop | Authorized resource user or administrator | Stop a virtual machine. | VM ID; returns operation result and resulting state. |
+| POST | /api/{api_version}/vms/{vm_id}/restart | Authorized resource user or administrator | Restart a virtual machine. | VM ID; returns operation result and resulting state. |
+| GET | /api/{api_version}/vms/{vm_id}/status | Authorized resource user or administrator | Read VM lifecycle status. | VM ID; returns current state. |
+| GET | /api/{api_version}/vms/{vm_id}/snapshots | Authorized resource user or administrator | List VM snapshots. | VM ID; returns snapshot summaries. |
+| POST | /api/{api_version}/vms/{vm_id}/snapshots | Authorized resource user or administrator | Create a VM snapshot. | VM ID and snapshot options; returns snapshot summary. |
+| POST | /api/{api_version}/vms/{vm_id}/migrate | Server administrator | Migrate a VM to another node. | VM ID and destination/options; returns migration operation result. |
+| GET | /api/{api_version}/containers | Authorized resource user or administrator | List visible containers. | Optional filters; returns container summaries. |
+| POST | /api/{api_version}/containers | Authorized user or administrator | Create a container. | Container configuration; returns container summary. |
+| GET | /api/{api_version}/containers/{container_id} | Authorized resource user or administrator | Read a container. | Container ID; returns container configuration and state. |
+| PUT | /api/{api_version}/containers/{container_id} | Authorized resource user or administrator | Update permitted container settings. | Container ID and changed settings; returns updated summary. |
+| DELETE | /api/{api_version}/containers/{container_id} | Authorized resource user or administrator | Delete a container. | Container ID; returns operation result. |
+| POST | /api/{api_version}/containers/{container_id}/start | Authorized resource user or administrator | Start a container. | Container ID; returns operation result and resulting state. |
+| POST | /api/{api_version}/containers/{container_id}/stop | Authorized resource user or administrator | Stop a container. | Container ID; returns operation result and resulting state. |
+| POST | /api/{api_version}/containers/{container_id}/restart | Authorized resource user or administrator | Restart a container. | Container ID; returns operation result and resulting state. |
+| GET | /api/{api_version}/networks | Server administrator | List virtual networks. | No body; returns network summaries. |
+| POST | /api/{api_version}/networks | Server administrator | Create a virtual network. | Network configuration; returns network summary. |
+| GET | /api/{api_version}/networks/{network_id} | Server administrator | Read a virtual network. | Network ID; returns network configuration and status. |
+| PUT | /api/{api_version}/networks/{network_id} | Server administrator | Update a virtual network. | Network ID and changed settings; returns updated network summary. |
+| DELETE | /api/{api_version}/networks/{network_id} | Server administrator | Delete a virtual network. | Network ID; returns operation result. |
+| GET | /api/{api_version}/storage/pools | Server administrator | List storage pools. | No body; returns pool summaries and capacity. |
+| POST | /api/{api_version}/storage/pools | Server administrator | Create a storage pool. | Pool configuration; returns pool summary. |
+| GET | /api/{api_version}/storage/pools/{pool_id} | Server administrator | Read a storage pool. | Pool ID; returns pool configuration and capacity. |
+| DELETE | /api/{api_version}/storage/pools/{pool_id} | Server administrator | Delete a storage pool. | Pool ID; returns operation result. |
+| GET | /api/{api_version}/storage/volumes | Authorized resource user or administrator | List visible storage volumes. | Optional filters; returns volume summaries. |
+| POST | /api/{api_version}/storage/volumes | Authorized user or administrator | Create a storage volume. | Volume configuration; returns volume summary. |
+| GET | /api/{api_version}/storage/volumes/{volume_id} | Authorized resource user or administrator | Read a storage volume. | Volume ID; returns volume details and status. |
+| DELETE | /api/{api_version}/storage/volumes/{volume_id} | Authorized resource user or administrator | Delete an authorized storage volume. | Volume ID; returns operation result. |
+| GET | /api/{api_version}/storage/backups | Server administrator | List available backups. | Optional filters; returns backup and restore-point summaries. |
+| POST | /api/{api_version}/storage/backups | Server administrator | Create a backup operation. | Source and backup options; returns operation or backup summary. |
+| GET | /api/{api_version}/monitoring | Server administrator | Query monitoring data. | Time range and resolution filters; returns time-series results. |
+| GET | /api/{api_version}/monitoring/prometheus | Monitoring client | Read scrape-format metrics. | No body; returns Prometheus text exposition. |
+| GET | /api/{api_version}/monitoring/status | Server administrator | Read current system status. | No body; returns host resource use, network totals, workload counts, and uptime. |
+| GET | /api/{api_version}/monitoring/nodes/{node_id}/metrics | Server administrator | Read metrics for a node. | Node ID; returns node metrics. |
+| GET | /api/{api_version}/monitoring/alerts | Server administrator | List alerts. | Optional filters; returns alert summaries. |
+| POST | /api/{api_version}/monitoring/alerts | Server administrator | Create an alert. | Alert definition; returns created alert summary. |
+| GET | /api2/json/version | Proxmox-compatible API credential | Read compatibility API version information. | No body; returns version and release identifiers. |
+| GET | /api2/json/nodes | Proxmox-compatible API credential | List compatibility API nodes. | No body; returns node summaries and capacity. |
+| GET | /api2/json/nodes/{node}/status | Proxmox-compatible API credential | Read node status. | Node name; returns uptime and CPU, memory, and swap state. |
+| GET | /api2/json/nodes/{node}/qemu | Proxmox-compatible API credential | List node virtual machines. | Node name; returns QEMU workload summaries. |
+| GET | /api2/json/nodes/{node}/lxc | Proxmox-compatible API credential | List node containers. | Node name; returns LXC workload summaries. |
+| GET | /api2/json/nodes/{node}/storage | Proxmox-compatible API credential | List node storage. | Node name; returns storage capacity and availability. |
+| GET | /api2/json/cluster/status | Proxmox-compatible API credential | Read compatibility cluster status. | No body; returns node and cluster status summaries. |
+| GET | /api2/json/cluster/resources | Proxmox-compatible API credential | List cluster resources. | No body; returns resource identity, capacity, and status. |
+| GET | /api2/json/access/ticket | Proxmox-compatible API credential | Request a compatibility authentication ticket. | Credential exchange; returns ticket and CSRF token. |
+| GET | /api2/json/access/users | Proxmox-compatible API credential | List compatibility access users. | No body; returns user identity and enabled/expiry metadata. |
